@@ -40,11 +40,6 @@ Python 없이 실행되는 프로그램 파일(약 213MB)은 용량이 커서 �
 
 자세한 설명과 파일 구성은 [studio/README.md](studio/README.md)에 있습니다.
 
-## 이전 프로그램 (공업수학 학습 스튜디오)
+## 이전 프로그램
 
-교재 예제를 절별로 계산하던 이전 프로그램도 저장소에 그대로 있습니다. 폴더 안의 **`실행.bat`**을 더블클릭하면 실행됩니다. 처음 한 번은 필요한 패키지를 설치하므로 인터넷이 필요하고 몇 분 걸립니다.
-
-- [docs/COVERAGE.md](docs/COVERAGE.md): 교재 절별 구현 현황
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): 설계와 버전별 구조 변경
-- [VALIDATION.md](VALIDATION.md): 검증 방법과 결과
-- [docs/HISTORY.md](docs/HISTORY.md): 버전별 변경 기록과 상세 설명
+교재 예제를 절별로 계산하던 이전 프로그램(공업수학 학습 스튜디오 v1.11.2)은 저장소에서 지웠습니다. 필요하면 git 기록의 커밋 `2dcdef5`에서 꺼낼 수 있습니다.

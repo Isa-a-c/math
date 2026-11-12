@@ -38,6 +38,5 @@ powershell -File build.ps1            # 실행 파일 만들기
 | `web/math.js` | 수식 해석, 급수, 파동·열 계산 (화면과 무관) |
 | `web/plot.js`, `web/style.css` | 그래프 그리기, 화면 모양 |
 | `web/test.html` | 교재 값과 닫힌 해로 계산 검사 |
-| `legacy/` | 이전 화면들. 프로그램에는 들어가지 않습니다. |
 
 새 개념은 `web/concepts.js`의 `CONCEPTS`와 `CONCEPT_TEXT`에 넣고, `web/studio.js`에 그래프(`PANELS`), 요약, 문제와 풀이를 추가합니다.
