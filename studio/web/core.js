@@ -37,12 +37,13 @@ const S = {
 };
 
 /* ── 값 읽기 ───────────────────────────────────────── */
-function positive(cfg, key, label) { try { return constant(cfg[key]); } catch (e) { throw new Error(`${label}: ${e.message}`); } }
+function positive(cfg, key, label, L = 1) { try { return constant(cfg[key], L); } catch (e) { throw new Error(`${label}: ${e.message}`); } }
 function real(cfg, key, label, L = 1) {
   let c;
   try { c = compile(String(cfg[key])); } catch (e) { throw new Error(`${label}: ${e.message}`); }
   const value = c.params.length ? NaN : c.fn(0, { L });
   if (!isFinite(value)) throw new Error(`${label}: 숫자를 입력하십시오.`);
+  if (c.fn(1.37, { L }) !== value) throw new Error(`${label}: x를 쓸 수 없습니다. 숫자를 입력하십시오.`);
   return value;
 }
 /** 비워 두면 null(자동)입니다. */
@@ -217,11 +218,19 @@ function membraneModel(f, h, a, b, M, speed) {
   return { a, b, M, Bx, By, terms, lam, u, zmax, base: lam(1, 1) };
 }
 /** Fourier 적분: A(w), B(w)를 [−X, X]에서 수치 적분하고, 위끝 a까지의 적분으로 f를 다시 만듭니다. */
+/** 구간 [a, b]에서 유계인지 봅니다(촘촘히 볼수록 커지면 무한히 커지는 함수). */
+function boundedOn(fn, a, b, label) {
+  const peak = n => { let m = 0; for (let i = 0; i < n; i++) { const y = fn(a + (i + .5) / n * (b - a)); if (!isFinite(y)) throw new Error(`${label}: 구간 안에 값이 정의되지 않는 점이 있습니다.`); m = Math.max(m, Math.abs(y)); } return m; };
+  const coarse = peak(500), fine = peak(4000);
+  if (fine > 1e4 || (fine > 10 && fine > 2 * coarse)) throw new Error(`${label}: 구간에서 유계인 함수를 입력하십시오.`);
+}
+/** Fourier 적분. x는 2048점, w는 위끝에 맞춰 늘린 점으로 계산합니다. 위끝이 x 간격의 한계(나이퀴스트)를 넘으면 알립니다. */
 function integralModel(f, X, wMax) {
-  const q = 2048, h = 2 * X / q, vs = [], fs = [];
+  const q = 2048, h = 2 * X / q, vs = [], fs = [], limit = .9 * PI / h;
+  if (wMax > limit) throw new Error(`적분의 위끝 a: 범위 X = ${fmt(X, 3)}에서는 ${Math.floor(limit)} 이하로 쓰십시오. 더 크게 하려면 범위 X를 줄이십시오.`);
   for (let i = 0; i < q; i++) { const v = -X + (i + .5) * h; vs.push(v); fs.push(f(v)); }
   if (fs.some(y => !isFinite(y))) throw new Error('구간 안에 값이 정의되지 않는 점이 있습니다.');
-  const K = 400, ws = Array.from({ length: K + 1 }, (_, i) => i / K * wMax), A = [], B = [];
+  const K = Math.min(4000, Math.max(400, Math.ceil(2 * wMax * X / PI))), ws = Array.from({ length: K + 1 }, (_, i) => i / K * wMax), A = [], B = [];
   for (const w of ws) { let sa = 0, sb = 0; for (let i = 0; i < q; i++) { sa += fs[i] * Math.cos(w * vs[i]); sb += fs[i] * Math.sin(w * vs[i]); } A.push(sa * h / PI); B.push(sb * h / PI); }
   const dw = wMax / K, edge = Math.max(Math.abs(fs[0]), Math.abs(fs[q - 1]));
   const recon = x => { let s = 0; for (let i = 0; i <= K; i++) s += (i === 0 || i === K ? .5 : 1) * (A[i] * Math.cos(ws[i] * x) + B[i] * Math.sin(ws[i] * x)); return s * dw; };
@@ -233,11 +242,12 @@ function compute(cfg) {
   const L = positive(cfg, 'L', 'L'), f = fnOf(cfg, 'f', '함수 f(x)', L), N = cfg.N;
   const R = { L, f, N, series: seriesOf(cfg, f, L) };
   R.view = { x: rangeOf(cfg, 'xMin', 'xMax', '그래프 가로 범위', L), y: rangeOf(cfg, 'yMin', 'yMax', '그래프 세로 범위', L) };
-  const X = anyInfinite(cfg) ? positive(cfg, 'X', '범위 X') : 0;
+  const X = anyInfinite(cfg) ? positive(cfg, 'X', '범위 X', L) : 0;
   if (cfg.on.wave) {
-    const speed = positive(cfg, 'c', '파동 속도 c'), g = fnOf(cfg, 'g', '초기 속도 g(x)', L), tSet = optionalPositive(cfg, 'tEndWave', '현 끝 시간', L);
+    const speed = positive(cfg, 'c', '파동 속도 c', L), g = fnOf(cfg, 'g', '초기 속도 g(x)', L), tSet = optionalPositive(cfg, 'tEndWave', '현 끝 시간', L);
     const k = real(cfg, 'damping', '감쇠 k', L);
     if (k < 0) throw new Error('감쇠 k: 0 이상이어야 합니다.');
+    if (cfg.waveDomain === 'finite') boundedOn(g, 0, L, '초기 속도 g(x)'); else boundedOn(g, -X, X, '초기 속도 g(x)');
     if (cfg.waveDomain === 'finite') {
       const free = cfg.waveEnds === 'free', T = 2 * L / speed, times = [];
       const model = free || k > 0 ? stringModel(f, g, L, N, speed, k, free) : buildPde('wave', 'fixed', f, g, { L, N, speed, alpha: 1 });
@@ -250,13 +260,14 @@ function compute(cfg) {
     }
   }
   if (cfg.on.membrane) {
-    const b = positive(cfg, 'b', '막의 세로 길이 b'), h = (() => { let c; try { c = compile(String(cfg.h).replace(/\by\b/g, 'x').replace(/\bb\b/g, 'L')); } catch (e) { throw new Error(`처음 모양 h(y): ${e.message}`); } const P = { ...cfg.params, L: b }; return y => c.fn(y, P); })();
+    const b = positive(cfg, 'b', '막의 세로 길이 b', L), h = (() => { let c; try { c = compile(String(cfg.h).replace(/\by\b/g, 'x').replace(/\bb\b/g, 'L')); } catch (e) { throw new Error(`처음 모양 h(y): ${e.message}`); } const P = { ...cfg.params, L: b }; return y => c.fn(y, P); })();
+    boundedOn(h, 0, b, '처음 모양 h(y)');
     R.membrane = { ...membraneModel(f, h, L, b, Math.max(1, Math.min(20, cfg.M)), R.wave.speed), h };
     R.membrane.tEnd = 4 * L / R.wave.speed;
   }
-  if (cfg.on.transform) R.transform = integralModel(f, positive(cfg, 'X', '범위 X'), positive(cfg, 'wMax', '적분의 위끝 a'));
+  if (cfg.on.transform) R.transform = integralModel(f, positive(cfg, 'X', '범위 X', L), positive(cfg, 'wMax', '적분의 위끝 a', L));
   if (cfg.on.heat) {
-    const alpha = positive(cfg, 'alpha', '열확산계수 c²'), tSet = optionalPositive(cfg, 'tEndHeat', '막대 끝 시간', L);
+    const alpha = positive(cfg, 'alpha', '열확산계수 c²', L), tSet = optionalPositive(cfg, 'tEndHeat', '막대 끝 시간', L);
     if (cfg.heatDomain === 'finite') {
       const left = cfg.bc === 'fixed' ? real(cfg, 'left', '왼쪽 끝 온도') : 0, right = cfg.bc === 'fixed' ? real(cfg, 'right', '오른쪽 끝 온도') : 0;
       const model = buildPde('heat', cfg.bc, f, () => 0, { L, N, alpha, speed: 1, left, right }), tEnd = tSet ?? 3 / model.rate(1);

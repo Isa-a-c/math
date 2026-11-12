@@ -170,6 +170,33 @@ window.STUDIO_SELFTEST = () => {
   const lib = libraryText(); check(!('on' in JSON.parse(lib).saved[0].cfg) && 'axes' in JSON.parse(lib).saved[0].cfg, '저장 파일에는 개념 축만 남김'); S.saved = [];
   check(importLibrary(lib) === 1 && S.saved[0].figures[0].caption === '내 그림', '예제 모음 파일 저장과 열기');
   let bad = false; try { importLibrary('{"kind":"other"}'); } catch { bad = true; } check(bad, '다른 파일은 거부');
+  // 점 찍기: 누른 곡선 위에 찍힘, 그래프 밖은 무시, 다시 누르면 지움
+  { const bad4 = [];
+    const cases = [[{}, 'series'], [{ axes: { ...DEFAULTS.axes, look: 'coef' } }, 'coef'], [{ axes: { ...DEFAULTS.axes, look: 'spectrum' } }, 'spectrum'], [{ axes: { ...DEFAULTS.axes, look: 'gibbs' } }, 'gibbs'],
+      [{ f: 'exp(-x^2)', axes: { ...DEFAULTS.axes, rep: 'integral' } }, 'transform'], [{ axes: { ...DEFAULTS.axes, time: 'wave' } }, 'wave'], [{ f: 'exp(-x^2)', axes: { ...DEFAULTS.axes, time: 'heat', bound: 'infinite' } }, 'heat'],
+      [{ axes: { ...DEFAULTS.axes, time: 'wave', dim: '2' } }, 'membrane']];
+    for (const [patch, panel] of cases) {
+      reset(patch); S.tool = 'mark'; draw();
+      const el = document.querySelector(`.pnl[data-panel="${panel}"]`), ov = el.querySelector('canvas.ov'), r = ov.getBoundingClientRect(), f = S.frames[panel];
+      const lines = pickLines(f, f.snap ? f.snap((f.xr[0] + f.xr[1]) / 2) : f.xr[0] + .37 * (f.xr[1] - f.xr[0])), xs = f.snap ? f.snap((f.xr[0] + f.xr[1]) / 2) : f.xr[0] + .37 * (f.xr[1] - f.xr[0]);
+      const target = lines.reduce((a, l) => (Math.abs(l[1]) > Math.abs(a[1]) ? l : a));
+      const px = f.b.l + (xs - f.xr[0]) / (f.xr[1] - f.xr[0]) * f.b.w + (target[2] ?? 0), py = f.b.t + (f.yr[1] - target[1]) / (f.yr[1] - f.yr[0]) * f.b.h;
+      const tap = (x, y) => ov.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: r.left + x, clientY: r.top + y }));
+      tap(px, py + 2); const m = S.marks[panel]?.[0], p = m && markPoint(f, m);
+      if (!p || Math.hypot(p.px - px, p.py - py) > 3) bad4.push(`${panel}: 누른 곳 (${px.toFixed(0)}, ${py.toFixed(0)}), 찍힌 곳 ${p ? `(${p.px.toFixed(0)}, ${p.py.toFixed(0)})` : '없음'}`);
+      tap(p ? p.px : px, p ? p.py : py); if (S.marks[panel].length) bad4.push(`${panel}: 다시 눌러도 안 지워짐`);
+      tap(2, 2); if (S.marks[panel].length) bad4.push(`${panel}: 그래프 밖에 찍힘`);
+    }
+    S.tool = 'view'; check(!bad4.length, `점 찍기: 그래프 ${cases.length}종에서 누른 곡선 위${bad4.length ? ` (${bad4.slice(0, 3).join(' / ')})` : ''}`); }
+  check(markPoint({ b: { l: 0, t: 0, w: 100, h: 100 }, xr: [0, 1], yr: [0, 1], probe: x => [['f', x]] }, .5)?.py === 50, '예전 파일의 점(x만)도 그림');
+  // 입력 검사
+  { const err = p => { try { compute(mergeCfg({ f: 'sin(x)', ...p })); return ''; } catch (e) { return e.message; } }, A = DEFAULTS.axes;
+    check(err({ axes: { ...A, time: 'wave' }, c: '0' }) === '파동 속도 c: 양수여야 합니다.' && !err({ axes: { ...A, time: 'heat' }, alpha: '-1' }).includes('길이'), '양수 안내에 "길이"라고 쓰지 않음');
+    check(err({ axes: { ...A, time: 'heat' }, left: 'x' }).includes('x를 쓸 수 없습니다') && err({ axes: { ...A, time: 'wave' }, c: 'x+1' }).includes('x를 쓸 수 없습니다'), '상수 칸에 x를 쓰면 안내');
+    check(near(compute(mergeCfg({ f: 'sin(x)', L: 'pi', c: 'L', axes: { ...A, time: 'wave' } })).wave.speed, PI, 1e-12), '상수 칸의 L은 실제 길이');
+    check(err({ axes: { ...A, time: 'wave' }, g: '1/x' }).includes('유계') && err({ axes: { ...A, time: 'wave', dim: '2' }, h: '1/y' }).includes('유계'), '무한히 커지는 g(x), h(y) 안내');
+    const T = compute(mergeCfg({ f: 'exp(-x^2)', X: '8', wMax: '360', axes: { ...A, rep: 'integral' } })).transform;
+    check(near(T.recon(1), Math.exp(-1), 1e-3) && near(T.recon(-3), Math.exp(-9), 1e-3) && err({ f: 'exp(-x^2)', X: '8', wMax: '1000', axes: { ...A, rep: 'integral' } }).includes('이하로'), 'Fourier 적분: 위끝을 키워도 맞고, 한계를 넘으면 안내'); }
   // 고정해서 비교
   reset({ N: 5 }); $('pinBtn').click(); set({ N: 40 });
   check(!!S.pin && shown() === 'series' && document.querySelector('.pnl .legend').textContent.includes('고정') && S.frames.series.probe(1).length === 3, '같은 개념은 한 칸에 겹쳐 비교');
@@ -192,7 +219,7 @@ window.STUDIO_SELFTEST = () => {
   ov.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx, clientY: cy, bubbles: true })); ov.dispatchEvent(new PointerEvent('pointermove', { clientX: cx + 30, clientY: cy + 10, bubbles: true })); ov.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
   check(S.ink.series?.[0]?.length === 2, '펜으로 그리기');
   document.querySelector('[data-tool="mark"]').click(); ov.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx, clientY: cy, bubbles: true }));
-  check(S.marks.series?.length === 1 && near(S.marks.series[0], f0.xr[0] + .75 * (f0.xr[1] - f0.xr[0]), 1e-6), '점 표시');
+  check(S.marks.series?.length === 1 && near(S.marks.series[0]?.x, f0.xr[0] + .75 * (f0.xr[1] - f0.xr[0]), 1e-6), '점 표시');
   $('clearInk').click(); check(!S.ink.series && !S.marks.series, '지우기');
   document.querySelector('[data-tool="view"]').click();
   $('presentBtn').click(); check(getComputedStyle($('settings')).display === 'none', '발표 모드는 설정을 숨김'); $('presentBtn').click();

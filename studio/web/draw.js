@@ -38,7 +38,7 @@ function bars(ctx, b, C, sets, N, refSets = []) {
     });
   }
   ctx.globalAlpha = 1;
-  return { xr, yr };
+  return { xr, yr, width };
 }
 const mix = (p, q, t) => p.map((v, i) => Math.round(v + (q[i] - v) * t));
 /** 위치(가로)와 시간(세로)에 따른 온도를 색으로 그리고 현재 시간에 선을 긋습니다. */
@@ -79,13 +79,13 @@ const PANELS = {
     if (ref) { const rb = x => trig(ref.cfg.coefKind)(ref.cfg.coefN * PI / ref.R.L * x); curve(ctx, x => ref.R.series.f(x) * rb(x), q, xr, Mq, C.green, 2, [], [7, 5]); }
     return { title: `계수 ${cfg.coefKind}${n}: 곱한 곡선의 넓이`, frame: { b: p, xr, yr },
       legend: [['--ink', fx], ['--blue', `${cfg.coefKind === 'b' ? 'sin' : 'cos'} ${argOf(n, L).replace('x', '<i>x</i>')}`, true], ['--pos-fill', '더하는 넓이', 'fill'], ['--neg-fill', '빼는 넓이', 'fill'], ...(ref ? [pinLabel(`${ref.cfg.coefKind}${ref.cfg.coefN}의 곱`)] : [])],
-      probe: x => [['f', model.f(x)], ['파동', basis(x)], ['곱', model.f(x) * basis(x)]] };
+      probe: x => [['f', model.f(x)], ['파동', basis(x)], ['곱', model.f(x) * basis(x)]], pick: x => [['f', model.f(x)], ['파동', basis(x)]] };
   },
   spectrum(ctx, w, h, C, cfg, R, ref) {
     const model = R.series, b = box(w, h, C);
     const fr = bars(ctx, b, C, [[C.hot, n => model.a[n]], [C.blue, n => model.b[n]]], cfg.N, ref ? [[C.green, n => ref.R.series.a[n]], [C.green, n => ref.R.series.b[n]]] : []);
     const at = x => Math.max(1, Math.min(NMAX, Math.round(x)));
-    return { title: '차수별 계수', frame: { b, ...fr }, legend: [['--hot', '<i>a<sub>n</sub></i>', 'fill'], ['--blue', '<i>b<sub>n</sub></i>', 'fill'], ...(ref ? [pinLabel('계수')] : [])],
+    return { title: '차수별 계수', frame: { b, xr: fr.xr, yr: fr.yr }, snap: at, pick: x => [[`a${at(x)}`, model.a[at(x)], -fr.width / 2], [`b${at(x)}`, model.b[at(x)], fr.width / 2]], legend: [['--hot', '<i>a<sub>n</sub></i>', 'fill'], ['--blue', '<i>b<sub>n</sub></i>', 'fill'], ...(ref ? [pinLabel('계수')] : [])],
       probe: x => [['n', at(x)], [`a${at(x)}`, model.a[at(x)]], [`b${at(x)}`, model.b[at(x)]]] };
   },
   gibbs(ctx, w, h, C, cfg, R, ref) {
@@ -172,6 +172,23 @@ const PANELS = {
       probe: x => [['u', H.u(x, t)], [cfg.bc === 'fixed' ? '정상 상태' : '평균', end(x)]] };
   },
 };
+/** 점을 찍을 수 있는 곡선: [이름, 값, 가로 어긋남(px)]. 그래프 칸이 pick을 주지 않으면 값 읽기(probe) 중 숫자인 줄입니다. */
+const pickLines = (f, x) => (f.pick ?? f.probe)(x).filter(l => isFinite(l[1]));
+/** 그래프 위 (x, y)에 가장 가까운 곡선의 점입니다. 그래프 밖이면 null입니다. */
+function markAt(f, x, y) {
+  if (!f || x === null || x < f.xr[0] || x > f.xr[1] || y < f.yr[0] || y > f.yr[1]) return null;
+  const sx = f.snap ? f.snap(x) : x, lines = pickLines(f, sx);
+  if (!lines.length) return null;
+  let i = 0;
+  lines.forEach((l, k) => { if (Math.abs(l[1] - y) < Math.abs(lines[i][1] - y)) i = k; });
+  return { x: sx, i };
+}
+/** 저장된 점(예전 파일은 x만)을 화면 좌표로 바꿉니다. */
+function markPoint(f, m) {
+  const { x, i = 0 } = typeof m === 'number' ? { x: m } : m, lines = pickLines(f, x), line = lines[Math.min(i, lines.length - 1)];
+  if (!line || x < f.xr[0] || x > f.xr[1] || line[1] < f.yr[0] || line[1] > f.yr[1]) return null;
+  return { x, y: line[1], name: line[0], px: f.b.l + (x - f.xr[0]) / (f.xr[1] - f.xr[0]) * f.b.w + (line[2] ?? 0), py: f.b.t + (f.yr[1] - line[1]) / (f.yr[1] - f.yr[0]) * f.b.h };
+}
 /** 체크한 개념 중 그래프가 있는 것입니다(그림을 담지 않은 예제의 Word 그림). */
 const panelIds = cfg => ['series', 'coef', 'spectrum', 'gibbs', 'transform', 'wave', 'membrane', 'heat'].filter(id => cfg.on[id]);
 const TIME_VIEW = cfg => cfg.on.membrane ? 'membrane' : cfg.on.wave ? 'wave' : cfg.on.heat ? 'heat' : null;

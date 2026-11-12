@@ -218,7 +218,7 @@ function draw() {
     S.drawingKey = key;
     const meta = key === 'pin' ? PANELS[S.pin.panel](ctx, w, h, C, { ...S.pin.cfg, s: S.cfg.s }, S.pin.R, null) : PANELS[key](ctx, w, h, C, cfg, S.R, S.pin?.panel === key ? S.pin : null);
     if (key === 'pin') meta.title = `고정: ${meta.title}`;
-    S.frames[key] = { ...meta.frame, probe: meta.probe };
+    S.frames[key] = { ...meta.frame, probe: meta.probe, pick: meta.pick, snap: meta.snap };
     el.querySelector('.pt').textContent = meta.title;
     const html = legendHtml(meta.legend), lg = el.querySelector('.legend');
     if (lg.innerHTML !== html) lg.innerHTML = html;
@@ -242,6 +242,19 @@ function drawOverlay(el) {
   const X = x => f.b.l + (x - f.xr[0]) / (f.xr[1] - f.xr[0]) * f.b.w;
   drawInk(ctx, f, S.ink[key], S.marks[key], C);
   if (S.hover?.key === key && S.tool === 'view') vline(ctx, X(S.hover.x), f.b, C.muted, [2, 3]);
+}
+/** 점 도구: 찍은 점 근처를 누르면 그 점을 지우고, 아니면 누른 곳에서 가장 가까운 곡선 위에 점을 찍습니다. 그래프 밖은 무시합니다. */
+function toggleMark(el, key, px, py) {
+  const f = S.frames[key];
+  if (!f) return;
+  const list = S.marks[key] ??= [], near = list.findIndex(m => { const p = markPoint(f, m); return p && Math.hypot(p.px - px, p.py - py) < 10; });
+  if (near >= 0) { list.splice(near, 1); setStatus('점을 지웠습니다.'); }
+  else {
+    const x = f.xr[0] + (px - f.b.l) / f.b.w * (f.xr[1] - f.xr[0]), y = f.yr[1] - (py - f.b.t) / f.b.h * (f.yr[1] - f.yr[0]), m = markAt(f, x, y);
+    if (!m) return setStatus('그래프 안쪽을 누르면 가장 가까운 곡선 위에 점이 찍힙니다.');
+    list.push(m);
+  }
+  drawOverlay(el);
 }
 const redrawOverlays = () => $$('#panels .pnl').forEach(drawOverlay);
 /** 마우스 위치를 그래프의 y로 바꿉니다. */
@@ -547,7 +560,7 @@ $('panels').addEventListener('pointerdown', e => {
   if (!el || e.target.tagName !== 'CANVAS') return;
   const key = el.dataset.panel, r = el.querySelector('canvas.ov').getBoundingClientRect();
   if (S.tool === 'pen') { (S.ink[key] ??= []).push([[xAt(el, e.clientX), yAt(el, e.clientY)]]); drag = { kind: 'pen', key, el, r }; }
-  else if (S.tool === 'mark') { const x = xAt(el, e.clientX); if (x !== null) (S.marks[key] ??= []).push(x); drawOverlay(el); return; }
+  else if (S.tool === 'mark') { toggleMark(el, key, e.clientX - r.left, e.clientY - r.top); return; }
   else if (S.zoom?.panel === key) drag = { kind: 'pan', key, el, x0: e.clientX, xr: [...S.zoom.xr], w: S.frames[key].b.w };
   if (drag) try { e.target.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트에는 포인터가 없습니다 */ }
 });
@@ -596,7 +609,7 @@ $('panels').addEventListener('keydown', e => {
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') probeAt(el, Math.max(f.xr[0], Math.min(f.xr[1], x + (e.key === 'ArrowLeft' ? -1 : 1) * span / 50)));
   else if (e.key === '+' || e.key === '=' || e.key === '-') { const k = e.key === '-' ? 1.25 : 1 / 1.25; S.zoom = { panel: key, xr: [x - (x - f.xr[0]) * k, x + (f.xr[1] - x) * k] }; S.dirty = true; }
   else if (e.key === '0') { S.zoom = null; S.dirty = true; }
-  else if (e.key === 'Enter') { (S.marks[key] ??= []).push(x); drawOverlay(el); setStatus(`x = ${fmt(x, 3)}에 점을 표시했습니다.`); }
+  else if (e.key === 'Enter') { const m = markAt(f, x, pickLines(f, f.snap ? f.snap(x) : x)[0]?.[1] ?? NaN); if (m) { (S.marks[key] ??= []).push(m); drawOverlay(el); setStatus(`x = ${fmt(m.x, 3)}에 점을 표시했습니다.`); } }
   else used = false;
   if (used) { e.preventDefault(); e.stopPropagation(); }
 });

@@ -67,13 +67,11 @@ function drawInk(ctx, f, ink, marks, C) {
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   for (const stroke of ink ?? []) { ctx.strokeStyle = C.hot; ctx.lineWidth = 3; ctx.setLineDash([]); ctx.beginPath(); stroke.forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y)))); ctx.stroke(); }
   ctx.restore();
-  for (const x of marks ?? []) {
-    const lines = f.probe(x);
-    if (!lines.length) continue;
-    const y = lines[0][1], px = X(x), py = Y(y);
-    if (!isFinite(px) || !isFinite(py)) continue;
-    dot(ctx, px, py, C.hot, C, 5);
-    panelText(ctx, `x = ${fmt(x, 3)}, ${lines[0][0]} = ${fmt(y, 4)}`, px + 8, py - 20 * C.scale, C);
+  for (const m of marks ?? []) {
+    const p = markPoint(f, m);
+    if (!p) continue;
+    dot(ctx, p.px, p.py, C.hot, C, 5);
+    panelText(ctx, `${f.snap ? `n = ${p.x}` : `x = ${fmt(p.x, 3)}`}, ${p.name} = ${fmt(p.y, 4)}`, p.px + 8, p.py - 20 * C.scale, C);
   }
 }
 /** 그림 하나를 흰 배경으로 그립니다(PNG와 고칠 수 있는 SVG). 그림을 담을 때의 설정·시간·확대 범위·펜 표시를 그대로 씁니다. */
@@ -85,10 +83,10 @@ function figureImage(fig) {
     const C = themeColors(), { ctx, w, h } = prepare(canvas);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
     const meta = PANELS[fig.panel](ctx, w, h, C, cfg, R, null);
-    drawInk(ctx, { ...meta.frame, probe: meta.probe }, fig.ink, fig.marks, C);
+    drawInk(ctx, { ...meta.frame, probe: meta.probe, pick: meta.pick, snap: meta.snap }, fig.ink, fig.marks, C);
     const svgCtx = new SvgContext(Math.round(w), Math.round(h));
     PANELS[fig.panel](svgCtx, w, h, C, cfg, R, null);
-    drawInk(svgCtx, { ...meta.frame, probe: meta.probe }, fig.ink, fig.marks, C);
+    drawInk(svgCtx, { ...meta.frame, probe: meta.probe, pick: meta.pick, snap: meta.snap }, fig.ink, fig.marks, C);
     return { png: canvas.toDataURL('image/png'), svg: svgCtx.toString(), caption: String(fig.caption ?? '').trim() || `${meta.title} (${meta.legend.map(([, t]) => t.replace(/<[^>]+>/g, '')).join(', ')})`, ratio: h / w, width: FIG_WIDTH[fig.size] ?? .8 };
   } finally { document.documentElement.dataset.theme = theme; S.zoom = zoom; S.drawingKey = key; }
 }

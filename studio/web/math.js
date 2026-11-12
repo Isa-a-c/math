@@ -128,11 +128,13 @@ function compile(text) {
 }
 
 /** 길이 표현 입력(pi, 2*pi, 1/3 등)을 숫자로 바꿉니다. */
-function constant(text) {
+/** 양수 상수를 읽습니다. 숫자, pi, L(길이)만 쓸 수 있고 x는 쓸 수 없습니다. */
+function constant(text, L = 1) {
   const c = compile(String(text));
-  if (c.params.length) throw new Error('길이에는 숫자나 pi만 쓸 수 있습니다.');
-  const v = c.fn(0, { L: 1 });
-  if (!isFinite(v) || v <= 0) throw new Error('길이는 양수여야 합니다.');
+  if (c.params.length) throw new Error('숫자, pi, L만 쓸 수 있습니다.');
+  const v = c.fn(0, { L }), v2 = c.fn(1.37, { L });
+  if (isFinite(v) !== isFinite(v2) || (isFinite(v) && v !== v2)) throw new Error('x를 쓸 수 없습니다. 숫자를 입력하십시오.');
+  if (!isFinite(v) || v <= 0) throw new Error('양수여야 합니다.');
   return v;
 }
 
