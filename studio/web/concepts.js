@@ -1,6 +1,6 @@
 'use strict';
-/* 개념 나무와 설명. parent는 바로 위 개념이고, 목록 순서가 수업 순서(다음 개념 →)입니다.
-   유한한 현·막대는 반구간 전개 위에, 무한히 긴 현·막대는 Fourier 급수 바로 위에 놓입니다(studio.js의 parentOf).
+/* 개념 설명. 화면에서는 개념을 고르지 않고 조건(core.js의 AXES)을 고르며, 켜진 개념의 설명이 이 순서로 나옵니다.
+   parent는 설명의 바탕 개념을 적어 둔 것입니다.
    설명은 고칠 수 있는 글입니다. 문단은 빈 줄로 나누고, $…$는 수식, $$…$$ 문단은 가운데 수식, '> '는 강조 상자입니다.
    화면의 '개념' 탭에서 고친 내용이 이 기본값보다 먼저 쓰입니다. */
 const CONCEPTS = [
@@ -8,8 +8,10 @@ const CONCEPTS = [
   { id: 'coef', ch: '11장', title: '계수의 의미 (직교성)', parent: 'series' },
   { id: 'spectrum', ch: '11장', title: '계수 크기', parent: 'coef' },
   { id: 'gibbs', ch: '11장', title: '수렴과 도약', parent: 'series' },
+  { id: 'transform', ch: '11장', title: 'Fourier 적분', parent: 'series' },
   { id: 'half', ch: '11장', title: '반구간 전개', parent: 'series' },
   { id: 'wave', ch: '12장', title: '현의 진동 (파동방정식)', parent: 'half' },
+  { id: 'membrane', ch: '12장', title: '막의 진동 (2차원 파동)', parent: 'wave' },
   { id: 'heat', ch: '12장', title: '막대의 열전도 (열방정식)', parent: 'half' },
 ];
 
@@ -74,7 +76,31 @@ $B_n$은 초기 변위의 반구간 사인 계수와 같습니다. 모든 $\lamb
 
 현이 무한히 길면 경계가 없어 **D’Alembert 해**를 씁니다. 초기 모양이 절반씩 나뉘어 속도 $c$로 양쪽으로 갑니다.
 
-$$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$$`,
+$$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$$
+
+> **감쇠와 자유 끝.** 감쇠가 있으면 $u_{tt} + 2ku_t = c^2 u_{xx}$이고 모드마다 $e^{-kt}$로 줄어듭니다($k < \lambda_n$이면 각진동수는 $\sqrt{\lambda_n^2 - k^2}$). 양 끝이 자유로우면($u_x = 0$) 모드가 $\cos\frac{n\pi x}{L}$이 되고 계수는 반구간 코사인 계수입니다.`,
+
+  transform: String.raw`주기가 없는 함수는 급수 대신 **Fourier 적분**으로 나타냅니다. 주기 $2L$을 한없이 키운 극한입니다.
+
+$$f(x) = \int_{0}^{\infty}[A(w)\cos wx + B(w)\sin wx]\,dw$$
+
+$$A(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\cos wv\,dv,\quad B(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\sin wv\,dv$$
+
+계수 $a_n$, $b_n$ 대신 연속된 진동수 $w$의 함수 $A(w)$, $B(w)$가 나옵니다. 우함수이면 $B(w) = 0$(Fourier 코사인 적분), 기함수이면 $A(w) = 0$(Fourier 사인 적분)입니다.
+
+적분의 위끝을 $a$로 끊으면 $a$가 커질수록 $f$에 가까워지고, 도약점에서는 두 극한의 평균으로 갑니다. 복소수로 쓰면 **Fourier 변환** $\hat f(w) = \frac{1}{\sqrt{2\pi}}\int_{-\infty}^{\infty} f(x)e^{-iwx}\,dx$가 됩니다.`,
+
+  membrane: String.raw`얇은 막의 작은 진동은 2차원 **파동방정식**을 따릅니다.
+
+$$u_{tt} = c^2(u_{xx} + u_{yy})$$
+
+가로 $a$, 세로 $b$인 직사각형 막의 가장자리가 고정되어 있으면 변수분리로 다음 모드를 얻습니다.
+
+$$u_{mn} = (B_{mn}\cos\lambda_{mn}t + B_{mn}^*\sin\lambda_{mn}t)\sin\frac{m\pi x}{a}\sin\frac{n\pi y}{b},\quad \lambda_{mn} = c\pi\sqrt{\frac{m^2}{a^2} + \frac{n^2}{b^2}}$$
+
+$$B_{mn} = \frac{4}{ab}\int_{0}^{b}\int_{0}^{a} f(x,y)\sin\frac{m\pi x}{a}\sin\frac{n\pi y}{b}\,dx\,dy$$
+
+현과 달리 $\lambda_{mn}$이 한 진동수의 정수배가 아니어서 막의 진동은 일반적으로 주기적이지 않습니다. 이 프로그램은 처음 모양을 $f(x)h(y)$로 두어 $B_{mn} = B_m B_n$으로 계산합니다(처음 속도 0).`,
 
   heat: String.raw`막대의 온도는 **열방정식**을 따릅니다. $c^2$은 열확산계수입니다.
 

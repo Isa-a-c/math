@@ -1,8 +1,8 @@
 'use strict';
 /* 수식 해석과 수학 계산. 화면(DOM)을 전혀 쓰지 않으므로 test.js에서 그대로 검사합니다. */
 const PI = Math.PI;
-const NMAX = 100;
-const QUAD = 2048;
+const NMAX = 200;
+const QUAD = 8192;   // N = 200까지 계수가 정확하도록 칸을 넉넉히 둡니다.
 
 const FUN = { sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
   sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh, exp: Math.exp, log: Math.log, ln: Math.log, sqrt: Math.sqrt,

@@ -8,31 +8,55 @@
 </head>
 <body class="studio">
 <div id="stage">
-  <header class="bar">
-    <strong>공업수학 시각화</strong>
-    <nav class="flow" aria-label="수업 순서">
-      <button type="button" class="btn" id="prevStep">← 이전</button>
-      <span id="stepLabel"></span>
-      <button type="button" class="btn primary" id="nextStep">다음 개념 →</button>
-    </nav>
-    <div class="row right">
-      <button type="button" class="btn" id="helpBtn">도움말</button>
-      <button type="button" class="btn" id="resetBtn" title="함수와 설정을 처음 상태로 돌립니다(만든 예제와 고친 설명은 그대로)">처음 상태로</button>
-      <button type="button" class="btn" id="smaller" aria-label="글자 작게">가−</button>
-      <button type="button" class="btn" id="bigger" aria-label="글자 크게">가+</button>
-      <button type="button" class="btn" id="themeBtn">어둡게</button>
-      <button type="button" class="btn primary" id="presentBtn">발표 모드 (F)</button>
+  <nav class="menubar" id="menubar" aria-label="메뉴">
+    <div class="menu"><button type="button" class="menu-top" data-menu="file" aria-haspopup="true" aria-expanded="false">파일</button>
+      <div class="menu-list" role="menu" hidden>
+        <button type="button" role="menuitem" data-click="libOpen">예제 모음 열기…</button>
+        <button type="button" role="menuitem" data-click="libSave">예제 모음 저장…</button>
+        <hr>
+        <button type="button" role="menuitem" data-click="wordBtn">Word로 출력…</button>
+        <button type="button" role="menuitem" data-click="pdfBtn">PDF로 출력…</button>
+      </div></div>
+    <div class="menu"><button type="button" class="menu-top" data-menu="edit" aria-haspopup="true" aria-expanded="false">편집</button>
+      <div class="menu-list" role="menu" hidden>
+        <button type="button" role="menuitem" id="undoBtn">되돌리기<kbd>Ctrl+Z</kbd></button>
+        <hr>
+        <button type="button" role="menuitem" id="resetBtn" title="함수와 설정을 처음 상태로 돌립니다(만든 예제와 고친 설명은 그대로)">처음 상태로</button>
+      </div></div>
+    <div class="menu"><button type="button" class="menu-top" data-menu="view" aria-haspopup="true" aria-expanded="false">보기</button>
+      <div class="menu-list" role="menu" hidden>
+        <button type="button" role="menuitem" data-page="viz">시각화</button>
+        <button type="button" role="menuitem" data-page="make">예제 만들기</button>
+        <button type="button" role="menuitem" data-page="out">출력</button>
+        <hr>
+        <button type="button" role="menuitem" id="presentBtn">발표 모드<kbd>F</kbd></button>
+        <button type="button" role="menuitem" id="themeBtn">어둡게</button>
+        <button type="button" role="menuitem" id="bigger">글자 크게</button>
+        <button type="button" role="menuitem" id="smaller">글자 작게</button>
+      </div></div>
+    <div class="menu"><button type="button" class="menu-top" data-menu="help" aria-haspopup="true" aria-expanded="false">도움말</button>
+      <div class="menu-list" role="menu" hidden>
+        <button type="button" role="menuitem" id="helpBtn">도움말 보기</button>
+        <button type="button" role="menuitem" id="tourAgain2">처음 안내 다시 보기</button>
+      </div></div>
+    <span class="menu-sep" aria-hidden="true"></span>
+    <div class="pages" role="tablist" aria-label="화면">
+      <button type="button" role="tab" data-page="viz" aria-selected="true">시각화</button>
+      <button type="button" role="tab" data-page="make" aria-selected="false">예제 만들기</button>
+      <button type="button" role="tab" data-page="out" aria-selected="false">출력</button>
     </div>
-  </header>
-  <div class="work">
+    <span class="ver" id="verLabel"></span>
+  </nav>
+  <div class="work" id="vizPage">
     <aside id="settings" aria-label="설정">
       <h3>함수</h3>
       <div id="baseFields"></div>
       <div id="paramFields"></div>
       <p class="err" id="err" role="alert" hidden></p>
-      <h3>개념</h3>
-      <p class="hint">체크하면 Fourier 급수에서 그 개념까지 이어진 개념만 켜지고, 그래프가 그 개념으로 바뀝니다.</p>
-      <div id="conceptList"></div>
+      <h3>조건</h3>
+      <p class="hint">대표 개념에 조건을 줄마다 하나씩 더합니다. 흐린 줄은 지금 쓰지 않는 조건입니다.</p>
+      <div id="recipe"></div>
+      <div id="detail"></div>
       <details class="group">
         <summary>그래프 범위</summary>
         <p class="hint">비워 두면 자동입니다. pi, 2L, -L처럼 써도 됩니다.</p>
@@ -41,29 +65,6 @@
         <div class="pair"><label>현 끝 시간<input class="tf" type="text" data-field="tEndWave" id="f_tEndWave" placeholder="자동"></label></div>
         <div class="pair"><label>막대 끝 시간<input class="tf" type="text" data-field="tEndHeat" id="f_tEndHeat" placeholder="자동"></label></div>
       </details>
-      <h3>출력</h3>
-      <div class="fld"><label class="flabel" for="sheetTitle">문서 제목</label><input class="tf" id="sheetTitle" type="text" data-sheet="title"></div>
-      <div class="fld"><label class="flabel" for="sheetSubtitle">머리말 (과목, 날짜 등)</label><input class="tf" id="sheetSubtitle" type="text" data-sheet="subtitle" placeholder="예: 공업수학 2 · 2026년 2학기"></div>
-      <div class="opts">
-        <label class="ck small"><input type="checkbox" data-sheet="concept" id="optConcept">개념 설명</label>
-        <label class="ck small"><input type="checkbox" data-sheet="graph" id="optGraph">그래프</label>
-        <label class="ck small"><input type="checkbox" data-sheet="solution" id="optSolution">풀이</label>
-        <label class="ck small"><input type="checkbox" data-sheet="student" id="optStudent">학번·이름 칸</label>
-      </div>
-      <div class="fld"><label class="flabel" for="optSpace">답 쓰는 칸 (풀이를 뺄 때)</label>
-        <select id="optSpace" data-sheet="space"><option value="0">없음</option><option value="4">작게</option><option value="8">보통</option><option value="14">크게</option></select></div>
-      <div class="row">
-        <button type="button" class="btn primary" id="wordBtn">Word로 출력</button>
-        <div class="choice" id="exportChoice" hidden role="alertdialog" aria-labelledby="choiceMsg">
-          <p id="choiceMsg"></p>
-          <div class="row"><button type="button" class="btn primary" id="choiceAdd"></button><button type="button" class="btn" id="choiceOnly">담은 예제만 출력</button><button type="button" class="btn" id="choiceCancel">취소</button></div>
-        </div>
-        <button type="button" class="btn" id="libSave">예제 모음 저장</button>
-        <button type="button" class="btn" id="libOpen">예제 모음 열기</button>
-        <input type="file" id="libFile" accept=".json,application/json" hidden>
-      </div>
-      <p class="hint" id="savedCount"></p>
-      <ol id="savedList"></ol>
     </aside>
     <div class="plotCol">
       <div class="tools" role="toolbar" aria-label="그래프 도구">
@@ -95,14 +96,50 @@
         <div class="tabs" role="tablist">
           <button type="button" role="tab" data-tab="summary">요약</button>
           <button type="button" role="tab" data-tab="concept">개념</button>
-          <button type="button" role="tab" data-tab="example">예제 만들기</button>
         </div>
         <div id="tabBody"></div>
       </section>
     </div>
   </div>
+  <div class="work make-page" id="makePage" hidden>
+    <section class="make-main" aria-label="예제 만들기">
+      <div class="setup-line"><span id="setupLine"></span> <button type="button" class="mini" data-page="viz">시각화에서 바꾸기</button></div>
+      <div id="exampleEditor"></div>
+    </section>
+  </div>
+  <div class="work out-page" id="outPage" hidden>
+    <section class="out-main" aria-label="출력">
+      <h3>출력</h3>
+      <div class="fld"><label class="flabel" for="sheetTitle">문서 제목</label><input class="tf" id="sheetTitle" type="text" data-sheet="title"></div>
+      <div class="fld"><label class="flabel" for="sheetSubtitle">머리말 (과목, 날짜 등)</label><input class="tf" id="sheetSubtitle" type="text" data-sheet="subtitle" placeholder="예: 공업수학 2 · 2026년 2학기"></div>
+      <div class="opts">
+        <label class="ck small"><input type="checkbox" data-sheet="concept" id="optConcept">개념 설명</label>
+        <label class="ck small"><input type="checkbox" data-sheet="graph" id="optGraph">그래프</label>
+        <label class="ck small"><input type="checkbox" data-sheet="solution" id="optSolution">풀이</label>
+        <label class="ck small"><input type="checkbox" data-sheet="student" id="optStudent">학번·이름 칸</label>
+      </div>
+      <div class="fld"><label class="flabel" for="optSpace">답 쓰는 칸 (풀이를 뺄 때)</label>
+        <select id="optSpace" data-sheet="space"><option value="0">없음</option><option value="4">작게</option><option value="8">보통</option><option value="14">크게</option></select></div>
+      <div class="row">
+        <button type="button" class="btn primary" id="wordBtn">Word로 출력</button>
+        <button type="button" class="btn" id="pdfBtn">PDF로 출력</button>
+        <div class="choice" id="exportChoice" hidden role="alertdialog" aria-labelledby="choiceMsg">
+          <p id="choiceMsg"></p>
+          <div class="row"><button type="button" class="btn primary" id="choiceAdd"></button><button type="button" class="btn" id="choiceOnly">담은 예제만 출력</button><button type="button" class="btn" id="choiceCancel">취소</button></div>
+        </div>
+        <button type="button" class="btn" id="libSave">예제 모음 저장</button>
+        <button type="button" class="btn" id="libOpen">예제 모음 열기</button>
+        <input type="file" id="libFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="hint" id="savedCount"></p>
+      <ol id="savedList"></ol>
+    </section>
+    <section class="out-list" aria-label="담은 예제 미리보기"><h3>담은 예제</h3><div class="doc" id="outPreview"></div></section>
+  </div>
 </div>
 <canvas id="exportCanvas" aria-hidden="true"></canvas>
+<div id="printArea"></div>
+<p class="sr-only" id="liveProbe" aria-live="polite"></p>
 <div id="status" role="status" aria-live="polite"></div>
 <div id="tour" hidden>
   <div class="tour-card" role="dialog" aria-labelledby="tourTitle">
@@ -116,7 +153,7 @@
   <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <h2 id="helpTitle">도움말</h2>
     <h3>시작하기</h3>
-    <ol><li>왼쪽 위에 함수를 입력합니다. 구간마다 식이 다르면 <b>구간별</b>을 고릅니다.</li><li><b>개념</b>에서 보고 싶은 개념을 체크하거나, 위쪽 <b>다음 개념 →</b>으로 순서대로 진행합니다.</li><li>그래프 아래 탭에서 요약, 개념 설명, 예제 만들기를 봅니다.</li><li><b>이 예제 담기</b>로 예제를 모으고 <b>Word로 출력</b>을 누릅니다.</li></ol>
+    <ol><li>맨 위 메뉴 줄의 <b>시각화</b> 화면 왼쪽 위에 함수를 입력합니다. 구간마다 식이 다르면 <b>구간별</b>을 고릅니다.</li><li><b>조건</b>에서 줄마다 값을 하나씩 고릅니다. 대표 개념은 '함수 = 파동들의 합' 하나이고, 표현(급수·반구간 사인·반구간 코사인·적분), 보기(부분합·계수·계수 크기·도약 확대), 시간(없음·파동·열), 경계(고정·자유·단열·무한), 공간(1차원·2차원 막), 감쇠를 더합니다. 맨 아래에 그 조합이 교재의 어느 절인지(예: 12장 · 현의 진동) 보이고, 교재에 바로 없는 조합은 '응용 조합'으로 표시됩니다. 흐린 줄은 지금 쓰지 않는 조건이며, 누르면 필요한 조건이 함께 바뀝니다(바뀐 것은 아래 상태 줄에 나옵니다).</li><li>그래프 아래 탭에서 요약(그래프 값 표 포함)과 개념 설명을 봅니다. 원하는 장면은 <b>그래프 담기</b>로 예제의 그림으로 넣습니다.</li><li>메뉴 줄의 <b>예제 만들기</b>에서 문제·배점·풀이 메모를 쓰고 <b>이 예제 담기</b>로 모읍니다. <b>출력</b>에서 <b>Word로 출력</b>이나 <b>PDF로 출력</b>을 누릅니다(파일 메뉴에도 있습니다).</li></ol>
     <h3>함수 입력</h3>
     <table class="help-table"><tr><th>쓰고 싶은 것</th><th>입력</th></tr>
       <tr><td>x 제곱</td><td><code>x^2</code> 또는 <code>x²</code></td></tr><tr><td>절댓값</td><td><code>|x|</code> 또는 <code>abs(x)</code></td></tr>
@@ -129,10 +166,12 @@
       <tr><td>적분, 합</td><td><code>$\int_{-L}^{L} f\,dx$</code>, <code>$\sum_{n=1}^{\infty}$</code></td></tr><tr><td>그리스 문자</td><td><code>$\pi$</code>, <code>$\lambda_n$</code></td></tr>
       <tr><td>가운데 수식</td><td>문단 전체를 <code>$$ … $$</code>로</td></tr><tr><td>강조 상자, 굵게</td><td>문단 앞 <code>&gt; </code>, <code>**굵게**</code></td></tr></table>
     <h3>용어</h3>
-    <dl class="help-terms"><dt>L</dt><dd>주기의 절반입니다. 주기가 2π이면 L = π입니다. 반구간 전개·현·막대에서는 길이입니다.</dd><dt>N</dt><dd>부분합에 더하는 항의 개수입니다.</dd><dt>고정(비교)</dt><dd>지금 결과를 남겨 둡니다. 같은 개념이면 겹쳐 보이고, 다른 개념이면 나란히 보입니다.</dd><dt>그래프 담기</dt><dd>지금 그래프를 예제의 그림으로 넣습니다.</dd><dt>≈</dt><dd>근삿값입니다. = 로 적힌 정확한 값도 수치 적분에서 찾은 값이므로 출제 전에 확인하십시오.</dd></dl>
+    <dl class="help-terms"><dt>L</dt><dd>주기의 절반입니다. 주기가 2π이면 L = π입니다. 반구간 전개·현·막대에서는 길이입니다.</dd><dt>N</dt><dd>부분합에 더하는 항의 개수입니다.</dd><dt>고정(비교)</dt><dd>지금 결과를 남겨 둡니다. 같은 개념이면 겹쳐 보이고, 다른 개념이면 나란히 보입니다.</dd><dt>그래프 담기</dt><dd>지금 그래프를 예제의 그림으로 넣습니다.</dd><dt>≈</dt><dd>근삿값입니다. = 로 적힌 정확한 값은 정밀 적분과 맞는 닫힌 꼴이고, 일반항은 n = 1~8 수치와 검산한 것입니다. 그래도 출제 전에 확인하십시오.</dd><dt>Fourier 적분</dt><dd>주기가 없는 함수를 A(w), B(w)로 나타냅니다. 범위 X 밖은 0으로 봅니다.</dd><dt>막의 진동</dt><dd>직사각형 막(가로 L, 세로 b)의 처음 모양을 f(x)·h(y)로 둡니다.</dd></dl>
     <h3>단축키와 그래프</h3>
-    <p>F 발표 모드 · Space 재생/일시정지 · ←/→ 이전/다음 개념 · Esc 닫기 · 그래프 위 Ctrl+휠 확대, 끌어서 이동, 더블클릭 원래대로</p>
+    <p>F 발표 모드 · Space 재생/일시정지 · Ctrl+Z 지운 것 되돌리기 · Esc 닫기</p>
+    <p>그래프: 마우스를 올리면 값, Ctrl+휠 확대, 끌어서 이동, 더블클릭 원래대로. 그래프를 누른 뒤 키보드로 ←→ 값 읽기, Shift+←→ 이동, +/− 확대, 0 원래대로, Enter 점 표시(값은 화면 낭독기에도 읽힘).</p>
     <h3>저장</h3>
+    <p>Word 그림은 Word에서 <b>도형으로 변환</b>하면 선과 글자를 고칠 수 있습니다. 한글(HWP)에서는 출력한 docx 파일을 열면 됩니다.</p>
     <p>만든 예제와 고친 설명은 이 PC에 자동 저장됩니다. 다른 PC로 옮기려면 <b>예제 모음 저장</b>으로 파일을 만들고, 그 PC에서 <b>예제 모음 열기</b>를 누르십시오.</p>
     <div class="row"><button type="button" class="btn" id="tourAgain">처음 안내 다시 보기</button><button type="button" class="btn primary" id="helpClose">닫기</button></div>
   </div>
@@ -140,7 +179,14 @@
 <script src="math.js"></script>
 <script src="plot.js"></script>
 <script src="docx.js"></script>
+<script src="svg.js"></script>
 <script src="concepts.js"></script>
-<script src="studio.js"></script>
+<script src="version.js"></script>
+<script src="symbolic.js"></script>
+<script src="core.js"></script>
+<script src="draw.js"></script>
+<script src="content.js"></script>
+<script src="store.js"></script>
+<script src="ui.js"></script>
 </body>
 </html>

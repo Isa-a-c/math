@@ -4,12 +4,14 @@
 검사: python app.py --self-test report.json
 """
 import json
+import re
 import sys
 import zipfile
 from pathlib import Path
 from xml.dom import minidom
-from PySide6.QtCore import QStandardPaths, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QMarginsF, QStandardPaths, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QPageLayout, QPageSize
+from PySide6.QtPdf import QPdfDocument
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox
 from PySide6.QtWebEngineCore import QWebEngineDownloadRequest, QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -18,10 +20,16 @@ ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
 WEB = ROOT / 'web'
 
 
+def app_version():
+    """web/version.js의 APP_VERSION을 읽습니다."""
+    match = re.search(r"APP_VERSION = '([^']+)'", (WEB / 'version.js').read_text(encoding='utf-8'))
+    return match.group(1) if match else '?'
+
+
 class StudioWindow(QMainWindow):
     def __init__(self, profile):
         super().__init__()
-        self.setWindowTitle('공업수학 시각화')
+        self.setWindowTitle(f'공업수학 시각화 v{app_version()}')
         self.resize(1440, 900)
         self.view = QWebEngineView(self)
         self.page = QWebEnginePage(profile, self.view)
@@ -30,8 +38,12 @@ class StudioWindow(QMainWindow):
         settings.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, True)
         self.page.fullScreenRequested.connect(self.toggle_full_screen)
         profile.downloadRequested.connect(self.save_document)
+        self.page.printRequested.connect(self.save_pdf)
+        self.page.pdfPrintingFinished.connect(self.pdf_saved)
         self.doc_target = None     # 자체 검사가 대화상자 없이 저장할 경로입니다.
         self.doc_finished = None
+        self.pdf_target = None
+        self.pdf_finished = None
         self.view.setPage(self.page)
         self.setCentralWidget(self.view)
 
@@ -65,8 +77,32 @@ class StudioWindow(QMainWindow):
         else:
             QMessageBox.warning(self, '저장 실패', f'{target.name}을 저장하지 못했습니다. 같은 이름의 파일이 다른 프로그램에서 열려 있으면 닫고 다시 시도하십시오.')
 
-    def open_page(self, name):
-        self.view.load(QUrl.fromLocalFile(str(WEB / name)))
+    def save_pdf(self):
+        """페이지의 window.print()를 받아 인쇄용 문서를 PDF로 저장합니다."""
+        name = self.page.title() or '공업수학 예제'
+        path = self.pdf_target or QFileDialog.getSaveFileName(self, 'PDF로 저장', f'{name}.pdf', 'PDF (*.pdf)')[0]
+        if not path:
+            self.page.runJavaScript('window.studioPrintDone?.()')
+            return
+        self.pdf_path = str(Path(path).with_suffix('.pdf'))
+        layout = QPageLayout(QPageSize(QPageSize.PageSizeId.A4), QPageLayout.Orientation.Portrait, QMarginsF(16, 18, 16, 18), QPageLayout.Unit.Millimeter)
+        self.page.printToPdf(self.pdf_path, layout)
+
+    def pdf_saved(self, path, ok):
+        self.page.runJavaScript('window.studioPrintDone?.()')
+        if self.pdf_finished:
+            self.pdf_finished(ok, Path(path))
+        elif ok:
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            self.page.runJavaScript(f'window.studioSaved?.({json.dumps(path)}, {json.dumps(opened)})')
+        else:
+            QMessageBox.warning(self, '저장 실패', 'PDF를 저장하지 못했습니다. 같은 이름의 파일이 열려 있으면 닫고 다시 시도하십시오.')
+
+    def open_page(self, name, query=''):
+        url = QUrl.fromLocalFile(str(WEB / name))
+        if query:
+            url.setQuery(query)
+        self.view.load(url)
 
     def closeEvent(self, event):
         # 프로필보다 먼저 페이지를 지워야 종료 시 경고가 나지 않습니다.
@@ -83,16 +119,17 @@ def check_docx(target):
                 minidom.parseString(archive.read(name))
         xml = archive.read('word/document.xml').decode('utf-8')
         images = sum(name.startswith('word/media/') for name in archive.namelist())
-    ok = all(t in xml for t in ('개념 정리', '직교성', '예제 1', '구하시오', '풀이')) and xml.count('<m:oMath>') > 10 and images == 2
-    return {'equations': xml.count('<m:oMath>'), 'images': images} if ok else None
+        svgs = sum(name.endswith('.svg') for name in archive.namelist())
+    ok = all(t in xml for t in ('개념 정리', '직교성', '예제 1', '구하시오', '풀이', 'svgBlip')) and xml.count('<m:oMath>') > 10 and images == 4 and svgs == 2
+    return {'equations': xml.count('<m:oMath>'), 'images': images // 2, 'svg': svgs} if ok else None
 
 
 def run_self_test(window, application, report_path):
     """계산 검사(test.html), 화면 검사(studio.html), Word 출력을 차례로 실행해 보고서를 씁니다."""
-    report = {'passed': False, 'frozen': bool(getattr(sys, 'frozen', False)), 'math': None, 'studio': None, 'word': None}
+    report = {'passed': False, 'version': app_version(), 'frozen': bool(getattr(sys, 'frozen', False)), 'math': None, 'studio': None, 'word': None, 'pdf': None}
 
     def finish():
-        report['passed'] = all(report[key] and report[key]['passed'] for key in ('math', 'studio')) and bool(report['word'])
+        report['passed'] = all(report[key] and report[key]['passed'] for key in ('math', 'studio')) and bool(report['word']) and bool(report['pdf'])
         Path(report_path).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         application.exit(0 if report['passed'] else 1)
 
@@ -103,10 +140,14 @@ def run_self_test(window, application, report_path):
         report['math'] = json.loads(value) if value else {'passed': False, 'checks': ['계산 검사가 값을 돌려주지 않았습니다.']}
         window.view.loadFinished.disconnect(on_math_loaded)
         window.view.loadFinished.connect(on_studio_loaded)
-        window.open_page('studio.html')
+        window.open_page('studio.html', 'selftest')
 
     def on_studio_loaded(_ok):
-        QTimer.singleShot(300, lambda: window.page.runJavaScript('JSON.stringify(window.STUDIO_SELFTEST())', 0, studio_done))
+        QTimer.singleShot(300, wait_selftest)
+
+    def wait_selftest():
+        # selftest.js는 페이지가 열린 뒤 따로 불러오므로, 준비될 때까지 기다립니다.
+        window.page.runJavaScript('typeof window.STUDIO_SELFTEST', 0, lambda kind: window.page.runJavaScript('JSON.stringify(window.STUDIO_SELFTEST())', 0, studio_done) if kind == 'function' else QTimer.singleShot(200, wait_selftest))
 
     def studio_done(value):
         report['studio'] = json.loads(value) if value else {'passed': False, 'checks': ['화면 검사가 값을 돌려주지 않았습니다.']}
@@ -117,6 +158,16 @@ def run_self_test(window, application, report_path):
 
     def word_done(ok, target):
         report['word'] = check_docx(target) if ok else None
+        # PDF 출력 단추도 눌러 봅니다. 앱 화면이 아니라 문제 문서가 저장되는지 글자로 확인합니다.
+        window.pdf_target = str(Path(report_path).with_name(Path(report_path).stem + ' 출력.pdf'))
+        window.pdf_finished = pdf_done
+        window.page.runJavaScript("S.fakeDownload = false; document.getElementById('pdfBtn').click()")
+
+    def pdf_done(ok, target):
+        document = QPdfDocument(window)
+        document.load(str(target))
+        text = ' '.join(document.getAllText(i).text() for i in range(document.pageCount()))
+        report['pdf'] = {'pages': document.pageCount()} if ok and '예제 1' in text and '구하시오' in text and '그래프 담기' not in text else None
         finish()
 
     window.view.loadFinished.connect(on_math_loaded)

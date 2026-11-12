@@ -13,7 +13,7 @@ const cat = (...xs) => { const n = xs.map(node); return { h: n.map(v => v.h).joi
 const sub = (b, s) => { b = node(b); s = node(s); return { h: `${b.h}<sub>${s.h}</sub>`, o: `<m:sSub><m:e>${b.o}</m:e><m:sub>${s.o}</m:sub></m:sSub>` }; };
 const sup = (b, s) => { b = node(b); s = node(s); return { h: `${b.h}<sup>${s.h}</sup>`, o: `<m:sSup><m:e>${b.o}</m:e><m:sup>${s.o}</m:sup></m:sSup>` }; };
 const frac = (a, b) => { a = node(a); b = node(b); return { h: `<span class="frac"><span>${a.h}</span><span>${b.h}</span></span>`, o: `<m:f><m:num>${a.o}</m:num><m:den>${b.o}</m:den></m:f>` }; };
-const nary = (symbol, lo, hi, body, html) => { lo = node(lo); hi = node(hi); return { h: html(lo.h, hi.h) + body.h, o: `<m:nary><m:naryPr><m:chr m:val="${symbol}"/><m:limLoc m:val="${symbol === '∑' ? 'undOvr' : 'subSup'}"/></m:naryPr><m:sub>${lo.o}</m:sub><m:sup>${hi.o}</m:sup><m:e>${body.o}</m:e></m:nary>` }; };
+const nary = (symbol, lo, hi, body, html) => { lo = node(lo); hi = node(hi); return { h: html(lo.h, hi.h) + body.h, o: `<m:nary><m:naryPr><m:chr m:val="${symbol}"/><m:limLoc m:val="${symbol === '∑' ? 'undOvr' : 'subSup'}"/>${lo.h ? '' : '<m:subHide m:val="1"/>'}${hi.h ? '' : '<m:supHide m:val="1"/>'}</m:naryPr><m:sub>${lo.o}</m:sub><m:sup>${hi.o}</m:sup><m:e>${body.o}</m:e></m:nary>` }; };
 const integral = (lo, hi, ...body) => nary('∫', lo, hi, cat(...body), (l, h) => `<span class="int"><span class="ig">∫</span><span class="lim"><span>${h}</span><span>${l}</span></span></span>`);
 const sum = (lo, hi, ...body) => nary('∑', lo, hi, cat(...body), (l, h) => `<span class="sum"><small>${h}</small><span class="sg">Σ</span><small>${l}</small></span>`);
 const fn = (name, ...arg) => { const a = cat(...arg); return { h: `${esc(name)} ${a.h}`, o: `<m:func><m:fName>${omr(name, true)}</m:fName><m:e>${a.o}</m:e></m:func>` }; };
@@ -26,14 +26,17 @@ const DOC = {
   h1: t => ({ k: 'h1', t }), h2: t => ({ k: 'h2', t }),
   p: (...seg) => ({ k: 'p', seg }), key: (...seg) => ({ k: 'key', seg }),
   eq: (...m) => ({ k: 'eq', m: cat(...m) }),
-  fig: (png, caption, ratio, width = 1) => ({ k: 'fig', png, caption, ratio, width }),
+  fig: (png, caption, ratio, width = 1, svg = '') => ({ k: 'fig', png, caption, ratio, width, svg }),
   gap: n => ({ k: 'gap', n }),
 };
 // 문자열에는 내장 함수 String.prototype.bold가 있으므로 문자열인지 먼저 확인합니다.
 const segHtml = seg => seg.map(s => typeof s === 'string' ? esc(s) : isMath(s) ? `<span class="m">${s.h}</span>` : s.bold !== undefined ? `<b>${esc(s.bold)}</b>` : esc(s)).join('');
-/** 화면용 HTML입니다. 그림과 빈칸은 화면에 이미 있거나 필요 없으므로 넣지 않습니다. */
-function blocksHtml(blocks) {
-  return blocks.map(b => b.k === 'h1' ? `<h3>${esc(b.t)}</h3>` : b.k === 'h2' ? `<h4>${esc(b.t)}</h4>` : b.k === 'p' ? `<p>${segHtml(b.seg)}</p>` : b.k === 'key' ? `<p class="key">${segHtml(b.seg)}</p>` : b.k === 'eq' ? `<div class="eq">${b.m.h}</div>` : '').join('');
+/** 화면용 HTML입니다. 그림과 빈칸은 화면에 이미 있거나 필요 없으므로 넣지 않습니다. print이면 인쇄(PDF)용으로 그림과 빈칸도 넣습니다. */
+function blocksHtml(blocks, print = false) {
+  let fig = 0;
+  return blocks.map(b => b.k === 'h1' ? `<h3>${esc(b.t)}</h3>` : b.k === 'h2' ? `<h4>${esc(b.t)}</h4>` : b.k === 'p' ? `<p>${segHtml(b.seg)}</p>` : b.k === 'key' ? `<p class="key">${segHtml(b.seg)}</p>` : b.k === 'eq' ? `<div class="eq">${b.m.h}</div>`
+    : print && b.k === 'fig' ? `<figure><img alt="${esc(b.caption)}" src="${b.png}" style="width:${Math.round((b.width ?? 1) * 100)}%"><figcaption>그림 ${++fig}. ${esc(b.caption)}</figcaption></figure>`
+    : print && b.k === 'gap' ? `<div class="gap" style="height:${b.n * 1.7}em"></div>` : '').join('');
 }
 
 /* ── 글 표기: 문단은 빈 줄로 나누고, $…$는 수식, $$…$$만 있는 문단은 가운데 수식, '> '로 시작하면 강조 상자, **…**는 굵게 ── */
@@ -135,7 +138,7 @@ const STYLES = `${XHEAD}<w:styles ${NS}><w:docDefaults><w:rPrDefault><w:rPr>${FO
 const SETTINGS = `${XHEAD}<w:settings ${NS}><m:mathPr><m:mathFont m:val="Cambria Math"/><m:defJc m:val="centerGroup"/></m:mathPr><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
 const FOOTRUN = '<w:rPr><w:color w:val="6B7280"/><w:sz w:val="18"/></w:rPr>';
 const FOOTER = `${XHEAD}<w:ftr ${NS}><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r>${FOOTRUN}<w:fldChar w:fldCharType="begin"/></w:r><w:r>${FOOTRUN}<w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r>${FOOTRUN}<w:fldChar w:fldCharType="separate"/></w:r><w:r>${FOOTRUN}<w:t>1</w:t></w:r><w:r>${FOOTRUN}<w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>`;
-const TYPES = `${XHEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>`
+const TYPES = `${XHEAD}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="svg" ContentType="image/svg+xml"/>`
   + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
   + '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
   + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>';
@@ -156,10 +159,10 @@ function documentXml(title, blocks, opts = {}) {
     else if (b.k === 'eq') body.push(`<w:p><w:pPr><w:pStyle w:val="Equation"/></w:pPr><m:oMathPara><m:oMathParaPr><m:jc m:val="center"/></m:oMathParaPr><m:oMath>${b.m.o}</m:oMath></m:oMathPara></w:p>`);
     else if (b.k === 'gap') for (let i = 0; i < b.n; i++) body.push('<w:p/>');
     else if (b.k === 'fig') {
-      images.push(b.png);
+      images.push({ png: b.png, svg: b.svg });
       const i = images.length, cx = Math.round(5760000 * (b.width ?? 1)), cy = Math.round(cx * b.ratio);
       body.push(`<w:p><w:pPr><w:pStyle w:val="Figure"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${i}" name="그림 ${i}" descr="${esc(b.caption)}"/>`
-        + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="fig${i}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdFig${i}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+        + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${i}" name="fig${i}.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdFig${i}">${b.svg ? `<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}"><asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="rIdSvg${i}"/></a:ext></a:extLst>` : ''}</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
         + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`);
       body.push(para('Caption', runs([`그림 ${i}. ${b.caption}`])));
     }
@@ -191,11 +194,11 @@ const pngBytes = dataUrl => Uint8Array.from(atob(dataUrl.split(',')[1]), ch => c
 /** 제목과 문서 조각으로 Word 파일(Blob)을 만듭니다. */
 function buildDocx(title, blocks, opts = {}) {
   const enc = new TextEncoder(), { xml, images } = documentXml(title, blocks, opts);
-  const figRels = images.map((_, i) => `<Relationship Id="rIdFig${i + 1}" Type="${REL}/image" Target="media/fig${i + 1}.png"/>`).join('');
+  const figRels = images.map((im, i) => `<Relationship Id="rIdFig${i + 1}" Type="${REL}/image" Target="media/fig${i + 1}.png"/>${im.svg ? `<Relationship Id="rIdSvg${i + 1}" Type="${REL}/image" Target="media/fig${i + 1}.svg"/>` : ''}`).join('');
   const docRels = `${XHEAD}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rIdSettings" Type="${REL}/settings" Target="settings.xml"/><Relationship Id="rIdFooter" Type="${REL}/footer" Target="footer1.xml"/>${figRels}</Relationships>`;
   const core = `${XHEAD}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${esc(title)}</dc:title><dc:language>ko-KR</dc:language></cp:coreProperties>`;
   const files = [['[Content_Types].xml', TYPES], ['_rels/.rels', PACKAGE_RELS], ['docProps/core.xml', core], ['word/document.xml', xml], ['word/styles.xml', STYLES], ['word/settings.xml', SETTINGS], ['word/footer1.xml', FOOTER], ['word/_rels/document.xml.rels', docRels]]
     .map(([name, text]) => [name, enc.encode(text)]);
-  images.forEach((png, i) => files.push([`word/media/fig${i + 1}.png`, pngBytes(png)]));
+  images.forEach((im, i) => { files.push([`word/media/fig${i + 1}.png`, pngBytes(im.png)]); if (im.svg) files.push([`word/media/fig${i + 1}.svg`, enc.encode(im.svg)]); });
   return { blob: zipStore(files), xml, images: images.length };
 }
