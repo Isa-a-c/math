@@ -60,7 +60,6 @@ function changeConcept(axis, value) {
 function setPage(page) {
   S.page = page;
   for (const b of $$('[data-page][role="tab"]')) b.setAttribute('aria-selected', b.dataset.page === page);
-  for (const b of $$('.menu-list [data-page]')) b.classList.toggle('checked', b.dataset.page === page);
   $('vizPage').hidden = page !== 'viz'; $('makePage').hidden = page !== 'make'; $('outPage').hidden = page !== 'out';
   if (document.body.classList.contains('present') && page !== 'viz') $('presentBtn').click();
   if (page === 'make') { setPlaying(false); rerenderMake(); }

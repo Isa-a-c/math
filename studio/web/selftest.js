@@ -45,6 +45,16 @@ window.STUDIO_SELFTEST = () => {
   add('time'); pick('bound', 'infinite'); check(shown() === 'wave' && S.cfg.waveDomain === 'infinite' && onList() === 'series,wave' && recipe().includes("D'Alembert"), '무한히 긴 현');
   const legacy = mergeCfg({ on: { series: true, half: true, heat: true }, bc: 'insulated' });
   check(legacy.axes.time === 'heat' && legacy.axes.bound === 'free' && legacy.halfMode === 'cosine' && legacy.on.heat, '예전 저장 파일(개념 체크)도 읽음');
+  // 개념 더하기가 계산값을 교재 값으로 바꾸는지 (삼각형 f, L = π)
+  reset({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 200, c: '1', alpha: '1' }); const b1Full = S.R.series.b[1];
+  add('half'); const b1Half = fineCoef(S.R.series, 'b', 1);
+  check(near(b1Half, 4 / PI, 1e-6) && Math.abs(b1Full - b1Half) > 1e-3 && S.R.series.a.every(v => Math.abs(v) < 1e-9), '+ 반구간 전개: b₁ = 4/π, aₙ = 0');
+  add('time'); check(near(S.R.wave.u(PI / 2, PI), -PI / 2, 1e-2) && near(S.R.wave.u(PI / 2, 2 * PI), PI / 2, 1e-2), '+ 시간 변화(파동): t = π에서 뒤집히고 2π에서 돌아옴');
+  pick('time', 'heat'); pick('bound', 'free'); set({ f: 'x' });
+  check(near(S.R.heat.u(0, 1), PI / 2 - 4 / PI * Math.exp(-1) - 4 / (9 * PI) * Math.exp(-9), 1e-4) && near(S.R.heat.u(1, 60), PI / 2, 1e-6), '열 방정식 + 단열: 교재 해와 평균 π/2');
+  add('dim'); check(shown() === 'membrane' && near(S.R.membrane.u(PI / 2, .5, 0), PI / 4, .1), '+ 2차원 막: t = 0에서 f(x)h(y)');
+  drop('dim'); add('damp'); set({ f: 'sin(x)', kDamp: '0.5' }); const mu2 = Math.sqrt(1 - .25);
+  check(near(S.R.wave.u(PI / 2, 1), Math.exp(-.5) * (Math.cos(mu2) + .5 / mu2 * Math.sin(mu2)), 1e-6), '+ 감쇠: e^(−kt) 감쇠 진동');
   // 모든 조합에서 자동 문장·풀이가 만들어지는지
   { const seen = new Set(), bad3 = [];
     for (const rep of ['series', 'sine', 'cosine', 'integral']) for (const look of ['partial', 'coef', 'spectrum', 'gibbs']) for (const time of ['none', 'wave', 'heat'])
@@ -66,9 +76,10 @@ window.STUDIO_SELFTEST = () => {
   page('viz'); check($('makePage').hidden && !$('vizPage').hidden && !$('nextStep') && !document.querySelector('[data-tab="example"]'), '시각화 페이지, 이전·다음 개념 단추 없음');
   // 메뉴 줄
   check($('menubar').getBoundingClientRect().height <= 34 && !document.querySelector('header.bar'), '제목 아래 얇은 메뉴 줄');
-  document.querySelector('[data-menu="view"]').click(); check(!document.querySelector('[data-menu="view"]').nextElementSibling.hidden && S.menuOpen, '보기 메뉴 펼치기');
-  document.querySelector('.menu-list [data-page="out"]').click();
-  check(S.page === 'out' && !$('outPage').hidden && $('vizPage').hidden && !S.menuOpen && $$('.menu-list:not([hidden])').length === 0 && $('outPreview').textContent.includes('예제 1'), '메뉴에서 출력 화면으로');
+  document.querySelector('[data-menu="view"]').click(); const viewList = document.querySelector('[data-menu="view"]').nextElementSibling;
+  check(!viewList.hidden && S.menuOpen && !viewList.querySelector('[data-page]') && !!viewList.querySelector('#presentBtn'), '보기 메뉴: 화면 이동은 메뉴 줄 탭에만 있음(중복 없음)');
+  document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); document.querySelector('.pages [data-page="out"]').click();
+  check(S.page === 'out' && !$('outPage').hidden && $('vizPage').hidden && !S.menuOpen && $('outPreview').textContent.includes('예제 1') && $$('[data-page][role="tab"]').length === 3, '메뉴 줄 탭으로 출력 화면');
   document.querySelector('[data-menu="file"]').click(); document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); check(!S.menuOpen, 'Esc로 메뉴 닫기');
   document.querySelector('[data-menu="edit"]').click(); document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); check(!S.menuOpen, '바깥을 누르면 메뉴 닫기');
   page('make'); check(!$('makePage').hidden && $('outPage').hidden, '예제 만들기 화면'); page('viz');
