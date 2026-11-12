@@ -2,7 +2,11 @@
 /* 저장(자동·예제 모음 파일)과 Word 출력. */
 /* ── 저장: 프로그램 안(자동)과 파일(예제 모음) ───────── */
 const STORE = 'lectureStudio.v1';
-const stateData = () => ({ v: 1, cfg: S.cfg, draft: S.draft, saved: S.saved, edits: S.edits, sheet: S.sheet });
+/** 저장할 때는 축(axes)만 남기고, 축에서 만들어지는 값은 지웁니다. 읽을 때 mergeCfg가 다시 만듭니다. */
+const DERIVED = ['on', 'halfMode', 'waveDomain', 'waveEnds', 'heatDomain', 'bc', 'damping'];
+const storedCfg = cfg => { const c = copy(cfg); for (const k of DERIVED) delete c[k]; return c; };
+const storedExample = e => ({ ...e, ...(e.cfg ? { cfg: storedCfg(e.cfg) } : {}), figures: (e.figures ?? []).map(f => ({ ...f, cfg: storedCfg(f.cfg) })) });
+const stateData = () => ({ v: 1, cfg: storedCfg(S.cfg), draft: storedExample(S.draft), saved: S.saved.map(storedExample), edits: S.edits, sheet: S.sheet });
 const cleanExample = e => ({ cfg: mergeCfg(e?.cfg), items: Array.isArray(e?.items) ? e.items.map(it => ({ ...newItem(KINDS[it.kind] ? it.kind : 'free'), ...it })) : [], figures: Array.isArray(e?.figures) ? e.figures.filter(f => PANELS[f?.panel]).map(f => ({ size: 'mid', caption: '', zoom: null, ...f, cfg: mergeCfg(f.cfg) })) : [] });
 function applyState(d) {
   if (!d || d.v !== 1) return false;
@@ -22,7 +26,7 @@ function persist() {
   saveTimer = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(stateData())); } catch { /* 저장 공간을 쓸 수 없으면 건너뜁니다 */ } }, 300);
 }
 function restore() { try { return applyState(JSON.parse(localStorage.getItem(STORE) ?? 'null')); } catch { return false; } }
-const libraryText = () => JSON.stringify({ kind: 'lecture-studio-library', version: 1, saved: S.saved, edits: S.edits, sheet: S.sheet }, null, 1);
+const libraryText = () => JSON.stringify({ kind: 'lecture-studio-library', version: 1, saved: S.saved.map(storedExample), edits: S.edits, sheet: S.sheet }, null, 1);
 /** 예제 모음 파일을 읽어 담은 예제에 더하고, 고친 개념 설명과 문제지 양식을 가져옵니다. */
 function importLibrary(text) {
   let d;
@@ -98,7 +102,7 @@ function exportBlocks() {
   }
   list.forEach((e, i) => {
     const cfg = mergeCfg(e.cfg), R = compute(cfg), items = e.items.length ? e.items : autoItems(cfg).map(it => ({ ...it, text: problemText(it.kind, cfg, R) }));
-    blocks.push(DOC.h1(`예제 ${i + 1}`));
+    blocks.push(DOC.h1(`예제 ${i + 1}  (${recipeText(cfg)})`));
     items.forEach((it, k) => blocks.push(...itemBlocks(it.text || (it.kind === 'free' ? '' : problemText(it.kind, cfg, R)), k, it.points)));
     if (o.graph) {
       const figs = e.figures.length ? e.figures : panelIds(cfg).map(panel => ({ panel, cfg, size: 'mid' }));

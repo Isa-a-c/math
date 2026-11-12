@@ -447,15 +447,26 @@ body.present .menubar .menu, body.present .menu-sep, body.present .pages { displ
 .make-page { padding: 0; }
 .make-main { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 16px; }
 
-/* 조건: 대표 개념 + 축 */
-#recipe .base { font-size: .84rem; color: var(--muted); margin: 2px 0 6px; }
-#recipe .base b { color: var(--ink); }
-#recipe .axis { display: grid; grid-template-columns: 2.6em 1fr; align-items: center; gap: 6px; margin: 4px 0; }
-#recipe .axis .flabel { margin: 0; font-size: .84rem; }
-#recipe .axis .seg { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 1px; background: var(--line); }
-#recipe .axis .seg button { padding: 4px 4px; border: 0; white-space: nowrap; }
-#recipe .axis.idle { opacity: .45; }
-#recipe .axis.idle:hover, #recipe .axis.idle:focus-within { opacity: .8; }
+/* 개념 더하기: 기본 개념 + 개념 카드 */
+#recipe .layer { border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: var(--surface); }
+#recipe .layer.active { border-color: var(--blue); box-shadow: inset 3px 0 0 var(--blue); }
+#recipe .lhead { display: flex; align-items: center; }
+#recipe .lname { flex: 1; text-align: left; background: none; border: 0; padding: 6px 8px 4px 10px; font-weight: 600; cursor: pointer; color: var(--ink); font-size: .92rem; }
+#recipe .lname small { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: .78rem; }
+#recipe .lname em { font-style: normal; color: var(--blue); font-size: .76rem; margin-left: 6px; font-weight: 600; }
+#recipe .lhead .x { margin-right: 4px; }
+#recipe .lbody { padding: 0 8px 8px 10px; }
+#recipe .lbody .hint { display: block; }
+#recipe .seg { display: grid; grid-template-columns: repeat(var(--n, 2), 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+#recipe .seg button { border: 0; padding: 4px; white-space: nowrap; }
+#recipe .seg button:disabled { cursor: default; }
+#recipe .seg button:disabled:not([aria-pressed="true"]) { color: var(--muted); }
+#recipe .lbody .fld { margin-top: 6px; }
 #recipe .dish { margin-top: 8px; padding: 6px 8px; border-left: 3px solid var(--blue); background: var(--blue-soft); font-size: .9rem; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 #recipe .dish span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
-#detail .detail-head { font-weight: 600; font-size: .84rem; margin: 10px 0 2px; color: var(--muted); }
+#recipe .adds { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; align-items: center; }
+#recipe .adds .flabel { width: 100%; margin: 0 0 2px; }
+#recipe .add { border: 1px dashed var(--muted); background: none; border-radius: 14px; padding: 3px 10px; cursor: pointer; font-size: .84rem; color: var(--ink); }
+#recipe .add:hover, #recipe .add:focus-visible { border-style: solid; border-color: var(--blue); color: var(--blue); }
+#outPreview h4 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
+#recipe .lsum { display: block; color: var(--muted); font-size: .84rem; }

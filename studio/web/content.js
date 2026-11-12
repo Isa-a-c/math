@@ -52,7 +52,7 @@ const KINDS = {
 };
 const newItem = kind => ({ kind, text: '', edited: false, auto: kind !== 'free', note: '', points: '' });
 const autoItems = cfg => ['series', ...['coef', 'spectrum', 'gibbs', 'transform', 'wave', 'membrane', 'heat'].filter(k => cfg.on[k])].map(newItem);
-const missing = kind => { const c = KINDS[kind].concept; return `(이 소문항에 필요한 개념 '${conceptOf(c).title}'이 꺼져 있습니다. 조건을 고르거나 문장을 직접 쓰십시오.)`; };
+const missing = kind => { const c = KINDS[kind].concept; return `(이 소문항에 필요한 개념 '${conceptOf(c).title}'이 꺼져 있습니다. 개념을 더하거나 문장을 직접 쓰십시오.)`; };
 const symMarkup = model => model.sym === 'odd' ? '기함수이므로 $a_n = 0$인 사인 급수입니다.' : model.sym === 'even' ? '우함수이므로 $b_n = 0$인 코사인 급수입니다.' : '대칭이 없어 사인 항과 코사인 항이 모두 나옵니다.';
 const firstNonzero = (get, count, tol) => { const out = []; for (let n = 1; n <= NMAX && out.length < count; n++) if (Math.abs(get(n)) >= tol) out.push(n); return out; };
 const valueEq = (name, pairs) => `$$${pairs.map(([n, v]) => { const e = exact(v); return `${name}_{${n}} ${rel(e)} ${e.text}`; }).join(',\\quad ')},\\ \\ldots$$`;
@@ -66,9 +66,11 @@ function problemText(kind, cfg, R) {
     case 'series': return half ? `${fMarkup(cfg)}를 반구간 ${cfg.halfMode === 'cosine' ? '코사인' : '사인'} 급수로 전개하시오. (길이 $L = ${Ls}$)` : `주기가 $2L$ ($L = ${Ls}$)인 함수 ${fMarkup(cfg)}의 Fourier 급수를 구하시오.`;
     case 'inverse': return `어떤 함수의 Fourier 급수가 $${termsText(seriesTerms(model, 4))}$일 때, 이 함수 $f(x)$를 구간 $${half ? '0' : '−L'} < x < L$에서 구하고 그래프를 그리시오. ($L = ${Ls}$)`;
     case 'graph': return `그림은 함수 $f(x)$와 Fourier 급수의 부분합 $S_N(x)$의 그래프이다. 그림에서 $N$의 값을 구하고, ${J ? '도약점에서 부분합이 지나는 값을 읽으시오.' : '부분합이 함수와 가장 크게 다른 곳을 찾으시오.'}`;
-    case 'coef': return `계수 $${cfg.coefKind}_{${cfg.coefN}}$을 함수와 파동을 곱한 곡선의 넓이로 해석하고 그 값을 구하시오.`;
-    case 'spectrum': return '계수의 크기가 $n$에 따라 줄어드는 빠르기를 구하고, 함수의 매끄러움과 연결하여 설명하시오.';
-    case 'gibbs': return J ? `도약점 $x = ${piLabel(J.x, model.L)}$에서 급수의 합을 구하고, $N = ${cfg.N}$일 때 도약점 옆 봉우리의 초과량을 구하시오.` : '이 함수의 급수가 모든 점에서 $f(x)$로 수렴하는 이유를 설명하시오.';
+    case 'coef': return half
+      ? `${fMarkup(cfg)}를 반구간 ${cfg.halfMode === 'cosine' ? '코사인' : '사인'} 급수로 전개할 때 계수 $${cfg.coefKind}_{${cfg.coefN}} = \\frac{2}{L}\\int_{0}^{L} f(x)${cfg.coefKind === 'b' ? '\\sin' : '\\cos'}\\frac{${cfg.coefN}\\pi x}{L}\\,dx$를 함수와 파동을 곱한 곡선의 넓이로 해석하고 그 값을 구하시오. ($L = ${Ls}$)`
+      : `계수 $${cfg.coefKind}_{${cfg.coefN}}$을 함수와 파동을 곱한 곡선의 넓이로 해석하고 그 값을 구하시오.`;
+    case 'spectrum': return `${half ? `반구간 ${cfg.halfMode === 'cosine' ? '코사인' : '사인'} 전개에서 ` : ''}계수의 크기가 $n$에 따라 줄어드는 빠르기를 구하고, ${half ? `${cfg.halfMode === 'cosine' ? '우함수' : '기함수'}로 확장한 함수의 ` : '함수의 '}매끄러움과 연결하여 설명하시오.`;
+    case 'gibbs': return J ? `${half ? `${cfg.halfMode === 'cosine' ? '우함수' : '기함수'}로 확장한 함수의 ` : ''}도약점 $x = ${piLabel(J.x, model.L)}$에서 급수의 합을 구하고, $N = ${cfg.N}$일 때 도약점 옆 봉우리의 초과량을 구하시오.` : '이 함수의 급수가 모든 점에서 $f(x)$로 수렴하는 이유를 설명하시오.';
     case 'transform': return `${fMarkup(cfg)}의 Fourier 적분 표현을 구하시오. $A(w)$, $B(w)$를 구하고, 적분의 위끝을 $a = ${prettyExpr(cfg.wMax)}$로 끊었을 때의 근사를 설명하시오.`;
     case 'membrane': return `가로 $a = ${Ls}$, 세로 $b = ${prettyExpr(cfg.b)}$인 직사각형 막의 가장자리가 고정되어 있다. 처음 모양이 $f(x)h(y)$ ($h(y) = ${prettyExpr(cfg.h, cfg.params)}$), 처음 속도가 0이고 $c = ${prettyExpr(cfg.c)}$일 때 $u(x,y,t)$를 구하시오.`;
     case 'wave': {
@@ -100,7 +102,7 @@ function symbolicFor(cfg, R, modeOverride, shift = null, shifted = null) {
 function solutionText(kind, cfg, R) {
   const c = KINDS[kind].concept;
   if (c && c !== 'series' && !cfg.on[c]) return missing(kind);
-  const model = R.series, tol = 1e-6 * Math.max(model.span, 1e-9), Ls = lengthText(cfg), out = [], J = model.jumps[0];
+  const model = R.series, tol = 1e-6 * Math.max(model.span, 1e-9), Ls = lengthText(cfg), out = [], J = model.jumps[0], half = cfg.on.half;
   const coefLines = () => {
     if (Math.abs(model.a0) >= tol) { const e = exact(fineCoef(model, 'a0')); out.push(`$$a_0 ${rel(e)} ${e.text}$$`); }
     const an = firstNonzero(n => model.a[n], 5, tol), bn = firstNonzero(n => model.b[n], 5, tol);
@@ -128,7 +130,7 @@ function solutionText(kind, cfg, R) {
       out.push(`그림의 부분합은 $N = ${cfg.N}$입니다.`);
       out.push(J ? `도약점 $x = ${piLabel(J.x, model.L)}$에서 부분합은 두 극한 ${fmt(J.left, 4)}, ${fmt(J.right, 4)}의 평균인 ${fmt((J.left + J.right) / 2, 4)}을 지납니다.` : `제곱오차는 $E^* = ${errText(squareError(model, cfg.N))}$입니다.`);
       break;
-    case 'coef': { const v = fineCoef(model, cfg.coefKind, cfg.coefN), e = exact(v); out.push(`곱한 곡선의 넓이는 ${fmt(v * model.L, 4)}이고, 이를 $L$로 나누면 $${cfg.coefKind}_{${cfg.coefN}} ${rel(e)} ${e.text}$입니다. ${Math.abs(v) < tol ? '넓이가 상쇄되어 이 파동은 함수에 들어 있지 않습니다.' : '넓이가 한쪽으로 쌓일수록 이 파동의 비중이 큽니다.'}`); break; }
+    case 'coef': { const v = fineCoef(model, cfg.coefKind, cfg.coefN), e = exact(v); if (half) out.push(`${cfg.halfMode === 'cosine' ? '우함수' : '기함수'}로 확장한 함수에서 $(-L, L)$의 곱한 넓이는 $(0, L)$의 넓이의 2배이므로 $\\frac{1}{L}\\int_{-L}^{L}$과 $\\frac{2}{L}\\int_{0}^{L}$은 같은 값입니다.`); out.push(`곱한 곡선의 넓이는 ${fmt(v * model.L, 4)}이고, 이를 $L$로 나누면 $${cfg.coefKind}_{${cfg.coefN}} ${rel(e)} ${e.text}$입니다. ${Math.abs(v) < tol ? '넓이가 상쇄되어 이 파동은 함수에 들어 있지 않습니다.' : '넓이가 한쪽으로 쌓일수록 이 파동의 비중이 큽니다.'}`); break; }
     case 'spectrum': { const p = decayPower(model); out.push(p === null ? decayWords(p) : `계수의 포락선이 $1/n^{${fmt(p, 1)}}$처럼 줄어듭니다. ${decayWords(p)}`); break; }
     case 'gibbs':
       out.push(J ? `$x = ${piLabel(J.x, model.L)}$에서 왼쪽 극한 ${fmt(J.left, 4)}, 오른쪽 극한 ${fmt(J.right, 4)}이므로 급수의 합은 평균 ${fmt((J.left + J.right) / 2, 4)}입니다. $N = ${cfg.N}$일 때 봉우리 초과량은 도약 크기의 ${(overshoot(model, J, cfg.N) * 100).toFixed(1)}%이며, $N$을 늘려도 약 9%로 남습니다(Gibbs 현상).` : '함수가 연속이고 구분적으로 매끄러워 모든 점에서 $f(x)$로 수렴합니다.');

@@ -174,8 +174,13 @@ const PANELS = {
 };
 /** 체크한 개념 중 그래프가 있는 것입니다(그림을 담지 않은 예제의 Word 그림). */
 const panelIds = cfg => ['series', 'coef', 'spectrum', 'gibbs', 'transform', 'wave', 'membrane', 'heat'].filter(id => cfg.on[id]);
-/** 화면의 그래프: 시간 조건(막·현·막대), 적분, 보기 조건 순서로 하나를 고릅니다. 반구간 전개는 급수 그래프를 확장으로 바꿉니다. */
-const viewOf = cfg => ['membrane', 'wave', 'heat', 'transform', 'gibbs', 'spectrum', 'coef'].find(k => cfg.on[k]) ?? 'series';
+const TIME_VIEW = cfg => cfg.on.membrane ? 'membrane' : cfg.on.wave ? 'wave' : cfg.on.heat ? 'heat' : null;
+const LOOK_VIEW = cfg => ['gibbs', 'spectrum', 'coef'].find(k => cfg.on[k]) ?? null;
+/** 개념 카드마다 보여 줄 그래프입니다. 카드가 없으면 null입니다. */
+const layerView = (cfg, id) => ({ base: 'series', domain: cfg.on.transform ? 'transform' : cfg.on.half ? 'series' : null, look: LOOK_VIEW(cfg), time: TIME_VIEW(cfg),
+  dim: cfg.on.membrane ? 'membrane' : null, damp: cfg.on.wave && cfg.axes?.damp === 'on' && cfg.waveDomain === 'finite' && !cfg.on.membrane ? 'wave' : null })[id] ?? null;
+/** 화면의 그래프: 고른 개념 카드(cfg.focus)의 그래프이고, 고르지 않았으면 시간 변화, 적분, 급수 분석, 급수 순서입니다. */
+const viewOf = cfg => (cfg.focus && layerView(cfg, cfg.focus)) || TIME_VIEW(cfg) || (cfg.on.transform ? 'transform' : null) || LOOK_VIEW(cfg) || 'series';
 /** 지금 그래프에 해당하는 개념 설명입니다. */
 const deepestOf = cfg => { const v = viewOf(cfg); return v === 'series' && cfg.on.half ? 'half' : v; };
 const conceptOf = id => CONCEPTS.find(c => c.id === id);

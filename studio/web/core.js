@@ -1,27 +1,28 @@
 'use strict';
 /* 공업수학 시각화의 상태, 값 읽기, 계산, 정확한 값, 구간별 함수. 화면(DOM)은 $ 외에 쓰지 않습니다. */
-/* 공업수학 시각화: 함수 하나를 입력하고 대표 개념(함수 = 파동들의 합)에 조건(표현·보기·시간·경계·공간·감쇠)을 고르면 그래프가 그 조합으로 바뀝니다.
+/* 공업수학 시각화: 함수 하나를 입력하고 기본 개념(Fourier 급수)에 개념(반구간 전개, 급수 분석, 시간 변화, 2차원 막, 감쇠…)을 더하면 그래프가 그 조합으로 바뀝니다.
    예제(문제·풀이·그림)는 사용자가 직접 만들고 고치며, 개념 설명도 고칠 수 있습니다. 모두 Word로 출력하고 파일로 저장합니다.
    계산은 math.js, 그리기는 plot.js, 수식 표기와 Word 파일은 docx.js, 개념 설명은 concepts.js입니다. */
 const $ = id => document.getElementById(id);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const DEFAULTS = {
   f: 'sign(x)', L: 'pi', N: 9, params: {},
-  axes: { rep: 'series', look: 'partial', time: 'none', bound: 'fixed', dim: '1', damp: 'off' },   // 조건(아래 AXES). on 등은 여기서 만들어집니다.
+  base: 'fourier', focus: null,   // 기본 개념(BASES)과 그래프로 보는 개념 카드
+  axes: { rep: 'series', look: 'partial', time: 'none', bound: 'fixed', dim: '1', damp: 'off' },   // 더한 개념(아래 AXES). on 등은 여기서 만들어집니다.
   on: { series: true, coef: false, spectrum: false, gibbs: false, transform: false, half: false, wave: false, membrane: false, heat: false },
   fMode: 'single', pieces: [],   // 구간별 입력이면 pieces로 f를 만듭니다.
   coefKind: 'b', coefN: 1, halfMode: 'sine',
   waveDomain: 'finite', g: '0', c: '1',
   heatDomain: 'finite', alpha: '0.1', bc: 'fixed', left: '0', right: '0',   // alpha는 교재의 c²(열확산계수)입니다.
   X: '8', s: 0,
-  jumpIndex: 1, waveEnds: 'fixed', damping: '0', kDamp: '0.3',   // 도약점 선택, 현의 끝(고정/자유), 감쇠 k(조건 '감쇠'가 있을 때 kDamp)
+  jumpIndex: 1, waveEnds: 'fixed', damping: '0', kDamp: '0.3',   // 도약점 선택, 현의 끝(고정/자유), 감쇠 k(개념 '감쇠'를 더했을 때 kDamp)
   wMax: '10',                                             // Fourier 적분의 위끝 a
   b: '1', h: 'y<b/2 ? y : b-y', M: 8,                     // 막: 세로 길이 b, 처음 모양의 y 방향 h(y), 모드 수
   xMin: '', xMax: '', yMin: '', yMax: '', tEndWave: '', tEndHeat: '',      // 비우면 자동
 };
 const SHEET = { title: '공업수학 예제', subtitle: '', concept: true, graph: true, solution: true, student: false, space: '8' };
 const copy = v => JSON.parse(JSON.stringify(v));
-/** 저장된 설정을 기본값과 합칩니다. 조건이 없는 예전 설정은 개념 체크에서 조건을 읽습니다. */
+/** 저장된 설정을 기본값과 합칩니다. 축이 없는 예전 설정은 개념 체크에서 축을 읽습니다. */
 function mergeCfg(c) {
   const m = { ...copy(DEFAULTS), ...copy(c ?? {}), on: { ...DEFAULTS.on, ...(c?.on ?? {}) }, params: { ...(c?.params ?? {}) } };
   m.axes = c?.axes ? { ...DEFAULTS.axes, ...c.axes } : axesFromOn(m);
@@ -65,92 +66,108 @@ const finiteHeat = cfg => cfg.on.heat && cfg.heatDomain === 'finite';
 const needsHalf = cfg => finiteWave(cfg) || finiteHeat(cfg);
 const anyInfinite = cfg => (cfg.on.wave && cfg.waveDomain === 'infinite') || (cfg.on.heat && cfg.heatDomain === 'infinite') || cfg.on.transform;
 
-/* ── 대표 개념 + 조건 ──────────────────────────────── */
-/* 대표 개념은 '함수를 파동들의 합으로 나타낸다' 하나입니다. 조건은 서로 독립된 축이고, 축마다 값을 하나 고릅니다.
-   교재의 절은 조건의 조합입니다. 장이 늘어도 축이나 값을 하나 더하면 되므로 목록이 커지지 않습니다.
-   cfg.on(개념별 켜짐)과 halfMode, waveDomain 같은 값은 조건에서 만들어지며, 계산·요약·예제·Word는 그대로 cfg.on을 씁니다. */
+/* ── 기본 개념 + 더하는 개념 ──────────────────────── */
+/* 장의 대표 개념(기본 개념)에 개념을 하나씩 더해 다른 절로 넓힙니다. 교재의 절은 더한 개념의 조합입니다.
+   더하는 개념은 서로 독립된 축(cfg.axes)의 값입니다. 장이 늘면 기본 개념(BASES)이나 축의 값을 더하므로 목록이 커지지 않습니다.
+   cfg.on(개념별 켜짐)과 halfMode, waveDomain 같은 값은 축에서 만들어지며, 계산·요약·예제·Word는 그대로 cfg.on을 씁니다.
+   저장할 때는 축만 남기고 만들어지는 값은 지웁니다(store.js의 storedCfg). */
 const AXES = [
-  { k: 'rep', label: '표현', options: [['series', '급수'], ['sine', '반구간 사인'], ['cosine', '반구간 코사인'], ['integral', '적분']] },
-  { k: 'look', label: '보기', options: [['partial', '부분합'], ['coef', '계수(넓이)'], ['spectrum', '계수 크기'], ['gibbs', '도약 확대']] },
-  { k: 'time', label: '시간', options: [['none', '없음'], ['wave', '파동'], ['heat', '열']] },
-  { k: 'bound', label: '경계', options: [['fixed', '고정'], ['free', '자유·단열'], ['infinite', '무한']] },
-  { k: 'dim', label: '공간', options: [['1', '1차원'], ['2', '2차원 (막)']] },
-  { k: 'damp', label: '감쇠', options: [['off', '없음'], ['on', '있음']] },
+  { k: 'rep', label: '구간', none: 'series', options: [['series', '주기 급수'], ['sine', '반구간 사인'], ['cosine', '반구간 코사인'], ['integral', 'Fourier 적분']] },
+  { k: 'look', label: '급수 분석', none: 'partial', options: [['partial', '없음'], ['coef', '계수의 의미'], ['spectrum', '계수 크기'], ['gibbs', '수렴과 도약']] },
+  { k: 'time', label: '시간 변화', none: 'none', options: [['none', '없음'], ['wave', '파동 방정식'], ['heat', '열 방정식']] },
+  { k: 'bound', label: '경계', none: 'fixed', options: [['fixed', '고정'], ['free', '자유(단열)'], ['infinite', '무한']] },
+  { k: 'dim', label: '2차원 막', none: '1', options: [['1', '없음'], ['2', '있음']] },
+  { k: 'damp', label: '감쇠', none: 'off', options: [['off', '없음'], ['on', '있음']] },
 ];
+/** 기본 개념(장의 대표 개념)입니다. 다른 장을 넣을 때 여기에 기본 개념을 더하고, 그 개념에 더할 수 있는 축을 정합니다. */
+const BASES = [{ id: 'fourier', ch: '11·12장', title: 'Fourier 급수', idea: '함수를 파동(sin, cos)들의 합으로 나타냅니다.' }];
+/** 축마다 화면의 개념 카드입니다. */
+const LAYER_OF = { rep: 'domain', look: 'look', time: 'time', bound: 'time', dim: 'dim', damp: 'damp' };
 const BOUND_REP = { fixed: 'sine', free: 'cosine', infinite: 'integral' };
 const axisText = (k, v) => AXES.find(a => a.k === k).options.find(o => o[0] === v)?.[1] ?? v;
-/** 축마다 지금 쓰이는 값입니다. 시간 조건이 있으면 표현은 경계에서 정해지고, 쓰이지 않는 축은 used = false입니다. */
+/** 축마다 지금 쓰이는 값입니다. 시간 변화가 있으면 구간은 경계에서 정해지고, 쓰이지 않는 축은 used = false입니다. */
 function axesView(ax) {
-  const timed = ax.time !== 'none';
+  const timed = ax.time !== 'none', rep = timed ? (ax.dim === '2' ? 'sine' : BOUND_REP[ax.bound]) : ax.rep;
   return {
-    rep: { value: timed ? (ax.dim === '2' ? 'sine' : BOUND_REP[ax.bound]) : ax.rep, used: true },
-    look: { value: ax.look, used: !timed && ax.rep !== 'integral' },
+    rep: { value: rep, used: true },
+    look: { value: ax.look, used: rep !== 'integral' },
     time: { value: ax.time, used: true },
     bound: { value: ax.bound, used: timed },
     dim: { value: ax.dim, used: ax.time === 'wave' },
     damp: { value: ax.damp, used: ax.time === 'wave' && ax.dim === '1' && ax.bound !== 'infinite' },
   };
 }
-/** 조건에서 개념 켜짐(cfg.on)과 확장·경계 값을 만듭니다. */
+/** 함께 쓸 수 없는 값을 정리합니다: 막은 고정된 끝의 파동, 감쇠는 유한한 1차원 현, 적분에는 급수 분석이 없습니다. */
+function normalizeAxes(ax) {
+  if (ax.time !== 'wave' || ax.bound !== 'fixed') ax.dim = '1';
+  if (ax.time !== 'wave' || ax.bound === 'infinite' || ax.dim === '2') ax.damp = 'off';
+  if (axesView(ax).rep.value === 'integral') ax.look = 'partial';
+  return ax;
+}
+/** 축에서 개념 켜짐(cfg.on)과 확장·경계 값을 만듭니다. */
 function applyAxes(cfg) {
-  const ax = cfg.axes, v = axesView(ax), on = cfg.on, rep = v.rep.value;
+  const ax = normalizeAxes(cfg.axes), v = axesView(ax), on = cfg.on, rep = v.rep.value;
   for (const k of Object.keys(on)) on[k] = false;
   on.series = true;
   if (rep === 'sine' || rep === 'cosine') { on.half = true; cfg.halfMode = rep; }
-  if (ax.time === 'none') {
-    if (rep === 'integral') on.transform = true;
-    else { on.coef = ax.look === 'coef' || ax.look === 'spectrum'; on.spectrum = ax.look === 'spectrum'; on.gibbs = ax.look === 'gibbs'; }
-  } else if (ax.time === 'wave') {
+  if (rep === 'integral' && ax.time === 'none') on.transform = true;
+  if (v.look.used) { on.coef = ax.look === 'coef' || ax.look === 'spectrum'; on.spectrum = ax.look === 'spectrum'; on.gibbs = ax.look === 'gibbs'; }
+  if (ax.time === 'wave') {
     on.wave = true; on.membrane = ax.dim === '2';
     cfg.waveDomain = ax.bound === 'infinite' ? 'infinite' : 'finite'; cfg.waveEnds = ax.bound === 'free' ? 'free' : 'fixed';
-  } else {
+  } else if (ax.time === 'heat') {
     on.heat = true; cfg.heatDomain = ax.bound === 'infinite' ? 'infinite' : 'finite'; cfg.bc = ax.bound === 'free' ? 'insulated' : 'fixed';
   }
   cfg.damping = v.damp.used && ax.damp === 'on' ? String(cfg.kDamp) : '0';
   return cfg;
 }
-/** 예전 저장 파일(개념 체크 방식)의 설정을 조건으로 읽습니다. */
+/** 예전 저장 파일(개념 체크 방식)의 설정을 축으로 읽습니다. */
 function axesFromOn(cfg) {
   const on = cfg.on, time = on.wave || on.membrane ? 'wave' : on.heat ? 'heat' : 'none';
   const inf = time === 'wave' ? cfg.waveDomain === 'infinite' : time === 'heat' && cfg.heatDomain === 'infinite';
   const free = time === 'wave' ? cfg.waveEnds === 'free' : time === 'heat' && cfg.bc === 'insulated';
   const damp = time === 'wave' && !inf && !on.membrane && !['', '0', '0.0'].includes(String(cfg.damping ?? '0').trim());
   if (damp) cfg.kDamp = String(cfg.damping);
-  return { rep: on.transform ? 'integral' : on.half ? (cfg.halfMode === 'cosine' ? 'cosine' : 'sine') : 'series',
+  return normalizeAxes({ rep: on.transform ? 'integral' : on.half ? (cfg.halfMode === 'cosine' ? 'cosine' : 'sine') : 'series',
     look: on.gibbs ? 'gibbs' : on.spectrum ? 'spectrum' : on.coef ? 'coef' : 'partial',
-    time, dim: on.membrane ? '2' : '1', bound: inf ? 'infinite' : free ? 'free' : 'fixed', damp: damp ? 'on' : 'off' };
+    time, dim: on.membrane ? '2' : '1', bound: inf ? 'infinite' : free ? 'free' : 'fixed', damp: damp ? 'on' : 'off' });
 }
-/** 조건 하나를 고릅니다. 함께 맞춰야 하는 다른 조건도 바꾸고, 바뀐 것을 글로 돌려줍니다(마지막으로 누른 것이 이깁니다). */
+/** 축 하나를 바꿉니다. 함께 맞춰야 하는 다른 축도 바꾸고, 바뀐 것을 글로 돌려줍니다(마지막으로 고른 것이 이깁니다).
+    그래프는 방금 더하거나 바꾼 개념으로 바뀝니다(cfg.focus). */
 function setAxis(cfg, axis, value) {
   const ax = cfg.axes, before = axesView({ ...ax });
   if (axis === 'rep' && ax.time !== 'none') {
     if (value === 'series') { ax.time = 'none'; ax.rep = 'series'; }
     else { ax.bound = { sine: 'fixed', cosine: 'free', integral: 'infinite' }[value]; ax.rep = value; }
   } else ax[axis] = value;
-  if (axis === 'look') { ax.time = 'none'; if (ax.rep === 'integral') ax.rep = 'series'; }
+  if (axis === 'look' && value !== 'partial' && axesView(ax).rep.value === 'integral') { if (ax.time === 'none') ax.rep = 'series'; else ax.bound = 'fixed'; }
+  if (axis === 'time' && before.time.value === 'none' && value !== 'none') ax.bound = 'fixed';   // 시간 변화를 처음 더하면 교재처럼 양 끝 고정부터
   if (axis === 'bound' && ax.time === 'none') ax.time = 'wave';
   if (axis === 'dim' && value === '2') { ax.time = 'wave'; ax.bound = 'fixed'; ax.damp = 'off'; }
   if (axis === 'damp' && value === 'on') { ax.time = 'wave'; ax.dim = '1'; if (ax.bound === 'infinite') ax.bound = 'fixed'; }
-  if (ax.time !== 'wave' || ax.bound !== 'fixed') ax.dim = '1';
-  if (ax.time !== 'wave' || ax.bound === 'infinite' || ax.dim === '2') ax.damp = 'off';
-  const after = axesView(ax), changed = AXES.filter(a => a.k !== axis && before[a.k].used && (after[a.k].used ? after[a.k].value !== before[a.k].value : ['dim', 'damp'].includes(a.k) && before[a.k].value !== (a.k === 'dim' ? '1' : 'off')));
-  return changed.length ? `함께 바뀐 조건: ${changed.map(a => `${a.label} → ${after[a.k].used ? axisText(a.k, after[a.k].value) : '쓰지 않음'}`).join(', ')}` : '';
+  normalizeAxes(ax);
+  cfg.focus = axis !== 'bound' && value === AXES.find(a => a.k === axis).none ? null : LAYER_OF[axis];
+  const after = axesView(ax), changed = AXES.filter(a => a.k !== axis && !(axis === 'time' && a.k === 'bound') && before[a.k].used && (after[a.k].used ? after[a.k].value !== before[a.k].value : before[a.k].value !== a.none));
+  return changed.length ? `함께 바뀐 개념: ${changed.map(a => `${a.label} → ${after[a.k].used ? axisText(a.k, after[a.k].value) : '뺌'}`).join(', ')}` : '';
 }
-/** 지금 조건이 교재의 어느 절인지 돌려줍니다: [장 또는 null(응용 조합), 이름]. */
+/** 지금 조합이 교재의 어느 절인지 돌려줍니다: [장 또는 null(응용 조합), 이름]. */
 function recipeOf(cfg) {
-  const ax = cfg.axes, rep = axesView(ax).rep.value;
+  const ax = cfg.axes, v = axesView(ax), rep = v.rep.value;
+  const look = v.look.used ? { partial: null, coef: '계수의 의미 (직교성)', spectrum: '계수 크기와 제곱오차', gibbs: '수렴과 Gibbs 현상' }[ax.look] : null;
+  let r;
   if (ax.time === 'wave') {
-    if (ax.dim === '2') return ['12장', '직사각형 막의 진동'];
-    if (ax.bound === 'infinite') return ['12장', "D'Alembert 해 (무한히 긴 현)"];
-    if (ax.bound === 'free' || ax.damp === 'on') return [null, `현의 진동${ax.bound === 'free' ? ' + 자유 끝' : ''}${ax.damp === 'on' ? ' + 감쇠' : ''}`];
-    return ['12장', '현의 진동'];
-  }
-  if (ax.time === 'heat') return ['12장', ax.bound === 'infinite' ? '무한히 긴 막대의 열전도 (열핵)' : ax.bound === 'free' ? '양 끝이 단열된 막대의 열전도' : '막대의 열전도'];
-  if (rep === 'integral') return ['11장', 'Fourier 적분'];
-  const look = { partial: null, coef: '계수의 의미 (직교성)', spectrum: '계수 크기와 제곱오차', gibbs: '수렴과 Gibbs 현상' }[ax.look];
-  if (rep === 'series') return ['11장', look ?? 'Fourier 급수'];
-  return look ? [null, `반구간 전개 + ${look}`] : ['11장', `반구간 전개 (${rep === 'sine' ? '사인' : '코사인'} 급수)`];
+    if (ax.dim === '2') r = ['12장', '직사각형 막의 진동'];
+    else if (ax.bound === 'infinite') r = ['12장', "D'Alembert 해 (무한히 긴 현)"];
+    else if (ax.bound === 'free' || ax.damp === 'on') r = [null, `현의 진동${ax.bound === 'free' ? ' + 자유 끝' : ''}${ax.damp === 'on' ? ' + 감쇠' : ''}`];
+    else r = ['12장', '현의 진동'];
+  } else if (ax.time === 'heat') r = ['12장', ax.bound === 'infinite' ? '무한히 긴 막대의 열전도 (열핵)' : ax.bound === 'free' ? '양 끝이 단열된 막대의 열전도' : '막대의 열전도'];
+  else if (rep === 'integral') r = ['11장', 'Fourier 적분'];
+  else if (rep === 'series') return ['11장', look ?? 'Fourier 급수'];
+  else return look ? [null, `반구간 전개 + ${look}`] : ['11장', `반구간 전개 (${rep === 'sine' ? '사인' : '코사인'} 급수)`];
+  return look ? [null, `${r[1]} + 처음 모양의 ${look}`] : r;
 }
+/** '12장 · 현의 진동', '응용 조합 · 현의 진동 + 감쇠'처럼 씁니다. */
+const recipeText = cfg => { const [ch, name] = recipeOf(cfg); return `${ch ?? '응용 조합'} · ${name}`; };
 
 /* ── 계산 ─────────────────────────────────────────── */
 function scanRange(fn, xr, times) {

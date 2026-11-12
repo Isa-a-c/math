@@ -12,6 +12,9 @@ window.STUDIO_SELFTEST = () => {
   // 예전 설정 이름(on, halfMode, waveDomain…)으로 바꾸면 조건을 다시 읽습니다.
   const set = patch => { Object.assign(S.cfg, patch); if (['on', 'halfMode', 'waveDomain', 'waveEnds', 'heatDomain', 'bc', 'damping'].some(k => k in patch)) S.cfg.axes = axesFromOn(S.cfg); renderSettings(); recompute(); draw(); };
   const pick = (axis, value) => { document.querySelector(`[data-axis="${axis}"][data-value="${value}"]`).click(); draw(); };
+  const add = id => { document.querySelector(`[data-add="${id}"]`).click(); draw(); };
+  const drop = id => { document.querySelector(`[data-remove="${id}"]`).click(); draw(); };
+  const see = id => { document.querySelector(`[data-focus="${id}"]`).click(); draw(); };
   const shown = () => { const list = $$('#panels .pnl'); return list.length === 1 ? list[0].dataset.panel : list.map(x => x.dataset.panel).join('+'); };
   const painted = () => $$('#panels canvas.main').every(c => { const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for (let i = 3; i < data.length; i += 40) if (data[i]) return true; return false; });
   const text = () => $('tabBody').textContent;
@@ -20,24 +23,44 @@ window.STUDIO_SELFTEST = () => {
   const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
   const tab = name => { document.querySelector(`[data-tab="${name}"]`).click(); };
   reset({});
-  const recipe = () => $('recipe').textContent, idle = k => document.querySelector(`#recipe [data-row="${k}"]`).classList.contains('idle');
-  check(shown() === 'series' && painted() && $('err').hidden && recipe().includes('11장') && recipe().includes('Fourier 급수'), '처음: 대표 개념(Fourier 급수) 그래프 하나');
-  check(!$('conceptList') && $$('#recipe .axis').length === 6 && idle('bound') && idle('dim') && idle('damp') && !idle('look'), '나무 대신 조건 여섯 줄, 쓰지 않는 줄은 흐림');
-  pick('look', 'coef'); check(onList() === 'series,coef' && shown() === 'coef' && !!$('f_coefN'), '보기: 계수(넓이)');
-  pick('look', 'spectrum'); check(onList() === 'series,coef,spectrum' && shown() === 'spectrum' && text().includes('계수 크기'), '보기: 계수 크기');
-  pick('rep', 'sine'); check(onList() === 'series,coef,spectrum,half' && shown() === 'spectrum' && S.cfg.halfMode === 'sine' && recipe().includes('응용 조합'), '조건 겹치기: 반구간 사인 + 계수 크기는 응용 조합');
-  pick('time', 'wave'); check(onList() === 'series,half,wave' && shown() === 'wave' && !$('transport').hidden && idle('look') && !idle('bound') && recipe().includes('12장') && recipe().includes('현의 진동'), '시간: 파동이면 12장 현의 진동, 보기 줄은 쉼');
-  pick('bound', 'free'); check(S.cfg.waveEnds === 'free' && S.cfg.halfMode === 'cosine' && recipe().includes('응용 조합') && painted(), '경계: 자유 끝이면 코사인 전개');
-  pick('dim', '2'); check(onList() === 'series,half,wave,membrane' && shown() === 'membrane' && S.cfg.axes.bound === 'fixed' && $('status').textContent.includes('경계 → 고정'), '공간: 2차원 막, 경계는 고정으로 함께 바뀜');
-  pick('damp', 'on'); check(S.cfg.axes.dim === '1' && +S.cfg.damping > 0 && !!$('f_kDamp') && shown() === 'wave' && $('status').textContent.includes('공간'), '감쇠: 막은 1차원으로 돌아감');
-  pick('time', 'heat'); check(onList() === 'series,half,heat' && shown() === 'heat' && S.cfg.axes.damp === 'off' && S.cfg.damping === '0' && recipe().includes('막대의 열전도'), '시간: 열');
-  pick('bound', 'free'); check(S.cfg.bc === 'insulated' && S.cfg.halfMode === 'cosine' && recipe().includes('단열') && !$('f_left'), '경계: 단열 막대');
-  pick('rep', 'integral'); check(S.cfg.heatDomain === 'infinite' && onList() === 'series,heat' && recipe().includes('열핵'), '표현: 적분이면 무한 막대');
-  pick('look', 'gibbs'); check(S.cfg.axes.time === 'none' && S.cfg.axes.rep === 'series' && shown() === 'gibbs' && $('status').textContent.includes('시간 → 없음'), '보기를 누르면 시간 조건이 빠짐');
-  pick('rep', 'integral'); check(shown() === 'transform' && onList() === 'series,transform' && idle('look') && recipe().includes('Fourier 적분'), '표현: 적분이면 Fourier 적분');
-  pick('bound', 'infinite'); check(shown() === 'wave' && S.cfg.waveDomain === 'infinite' && onList() === 'series,wave' && recipe().includes("D'Alembert"), '경계만 눌러도 파동이 켜짐(무한히 긴 현)');
+  const recipe = () => $('recipe').textContent, card = id => document.querySelector(`#recipe [data-layer="${id}"]`);
+  check(shown() === 'series' && painted() && $('err').hidden && recipe().includes('11장') && recipe().includes('Fourier 급수') && $$('#recipe .layer:not(.base)').length === 0 && $$('[data-add]').length === 6, '처음: 기본 개념 Fourier 급수와 더할 개념 6개');
+  add('look'); check(onList() === 'series,coef' && shown() === 'coef' && !!card('look') && !!card('look').querySelector('#f_coefN') && !document.querySelector('[data-add="look"]'), '급수 분석 더하기: 설정은 카드 안');
+  pick('look', 'spectrum'); check(onList() === 'series,coef,spectrum' && shown() === 'spectrum' && text().includes('계수 크기'), '분석 바꾸기: 계수 크기');
+  add('half'); check(onList() === 'series,coef,spectrum,half' && shown() === 'series' && S.cfg.halfMode === 'sine' && recipe().includes('응용 조합') && card('domain').classList.contains('active'), '반구간 전개를 더하면 그래프는 방금 더한 개념');
+  see('look'); check(shown() === 'spectrum' && card('look').classList.contains('active'), '카드 이름을 누르면 그 개념의 그래프');
+  add('time'); check(onList() === 'series,coef,spectrum,half,wave' && shown() === 'wave' && !$('transport').hidden && recipe().includes('현의 진동') && card('domain').textContent.includes('경계가 정함') && !card('domain').querySelector('[data-remove]') && !card('look').querySelector('#f_coefN'), '시간 변화(파동): 반구간은 경계가 정함');
+  see('look'); check(shown() === 'spectrum' && recipe().includes('처음 모양') && !!card('look').querySelector('[data-axis="look"]') && !card('time').querySelector('[data-axis]'), '시간 변화가 있어도 처음 모양의 계수 크기를 봄');
+  see('time'); pick('bound', 'free'); check(S.cfg.waveEnds === 'free' && S.cfg.halfMode === 'cosine' && shown() === 'wave', '양 끝 자유: 코사인 전개');
+  add('dim'); check(S.cfg.on.membrane && shown() === 'membrane' && S.cfg.axes.bound === 'fixed' && $('status').textContent.includes('경계 → 고정') && !!card('dim').querySelector('#f_M'), '2차원 막 더하기: 경계는 고정으로');
+  $('undoBtn').click(); draw(); check(!S.cfg.on.membrane && S.cfg.axes.bound === 'free' && shown() === 'wave', '개념 바꾸기도 되돌리기');
+  add('dim'); add('damp'); check(S.cfg.axes.dim === '1' && +S.cfg.damping > 0 && !!card('damp').querySelector('#f_kDamp') && shown() === 'wave' && $('status').textContent.includes('2차원 막'), '감쇠: 막은 빠짐');
+  drop('time'); check(onList() === 'series,coef,spectrum,half' && S.cfg.damping === '0' && !card('time') && !card('damp'), '시간 변화를 빼면 감쇠도 빠짐');
+  drop('look'); drop('domain'); check(onList() === 'series' && shown() === 'series' && recipe().includes('Fourier 급수') && card('base').classList.contains('active'), '모두 빼면 기본 개념');
+  add('time'); pick('time', 'heat'); check(onList() === 'series,half,heat' && shown() === 'heat' && recipe().includes('막대의 열전도'), '열 방정식');
+  pick('bound', 'free'); check(S.cfg.bc === 'insulated' && S.cfg.halfMode === 'cosine' && recipe().includes('단열') && !$('f_left'), '단열 막대');
+  pick('bound', 'infinite'); check(S.cfg.heatDomain === 'infinite' && onList() === 'series,heat' && recipe().includes('열핵'), '무한히 긴 막대');
+  drop('time'); add('integral'); check(shown() === 'transform' && onList() === 'series,transform' && !!card('domain').querySelector('#f_wMax'), 'Fourier 적분 더하기');
+  add('look'); check(onList() === 'series,coef' && $('status').textContent.includes('구간 → 주기 급수'), '적분에 급수 분석을 더하면 주기 급수로');
+  add('time'); pick('bound', 'infinite'); check(shown() === 'wave' && S.cfg.waveDomain === 'infinite' && onList() === 'series,wave' && recipe().includes("D'Alembert"), '무한히 긴 현');
   const legacy = mergeCfg({ on: { series: true, half: true, heat: true }, bc: 'insulated' });
-  check(legacy.axes.time === 'heat' && legacy.axes.bound === 'free' && legacy.halfMode === 'cosine' && legacy.on.heat, '예전 저장 파일(개념 체크)도 조건으로 읽음');
+  check(legacy.axes.time === 'heat' && legacy.axes.bound === 'free' && legacy.halfMode === 'cosine' && legacy.on.heat, '예전 저장 파일(개념 체크)도 읽음');
+  // 모든 조합에서 자동 문장·풀이가 만들어지는지
+  { const seen = new Set(), bad3 = [];
+    for (const rep of ['series', 'sine', 'cosine', 'integral']) for (const look of ['partial', 'coef', 'spectrum', 'gibbs']) for (const time of ['none', 'wave', 'heat'])
+      for (const bound of ['fixed', 'free', 'infinite']) for (const dim of ['1', '2']) for (const damp of ['off', 'on']) {
+        const cfg = mergeCfg({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, axes: { rep, look, time, bound, dim, damp }, kDamp: '0.2' }), key = JSON.stringify(cfg.on) + cfg.waveDomain + cfg.waveEnds + cfg.heatDomain + cfg.bc + cfg.damping;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        try {
+          const R = compute(cfg);
+          for (const it of autoItems(cfg)) { const p = problemText(it.kind, cfg, R), q = solutionText(it.kind, cfg, R); if (!p || !q || /undefined|NaN|꺼져 있습니다/.test(p + q)) bad3.push(`${recipeText(cfg)}: ${it.kind}`); }
+          if (!recipeOf(cfg)[1]) bad3.push(key);
+        } catch (e) { bad3.push(`${key}: ${e.message}`); }
+      }
+    check(!bad3.length && seen.size > 20, `모든 조합 ${seen.size}가지의 자동 문장·풀이${bad3.length ? ` (문제: ${bad3.slice(0, 3).join(' / ')})` : ''}`); }
+  reset({ f: 'x', L: 'pi', axes: { rep: 'sine', look: 'coef', time: 'none', bound: 'fixed', dim: '1', damp: 'off' } });
+  check(near(fineCoef(S.R.series, 'b', 1), 2, 1e-6) && problemText('coef', S.good, S.R).includes('\\frac{2}{L}\\int_{0}^{L}') && solutionText('coef', S.good, S.R).includes('2배'), '반구간 전개의 계수: 2/L ∫₀ᴸ 꼴로 묻고 풂');
   // 상단 탭: 시각화 / 예제·출력
   page('make'); check(!$('makePage').hidden && $('vizPage').hidden && $('setupLine').textContent.includes('지금 설정') && !!$('items'), '예제·출력 페이지');
   page('viz'); check($('makePage').hidden && !$('vizPage').hidden && !$('nextStep') && !document.querySelector('[data-tab="example"]'), '시각화 페이지, 이전·다음 개념 단추 없음');
@@ -133,13 +156,13 @@ window.STUDIO_SELFTEST = () => {
   // 저장과 불러오기
   const snap = JSON.stringify(stateData()); S.saved = []; S.cfg.f = 'x';
   check(applyState(JSON.parse(snap)) && S.saved.length === 1 && S.saved[0].items[0].edited && S.cfg.f === 'sign(x)', '프로그램 안 저장과 다시 열기');
-  const lib = libraryText(); S.saved = [];
+  const lib = libraryText(); check(!('on' in JSON.parse(lib).saved[0].cfg) && 'axes' in JSON.parse(lib).saved[0].cfg, '저장 파일에는 개념 축만 남김'); S.saved = [];
   check(importLibrary(lib) === 1 && S.saved[0].figures[0].caption === '내 그림', '예제 모음 파일 저장과 열기');
   let bad = false; try { importLibrary('{"kind":"other"}'); } catch { bad = true; } check(bad, '다른 파일은 거부');
   // 고정해서 비교
   reset({ N: 5 }); $('pinBtn').click(); set({ N: 40 });
   check(!!S.pin && shown() === 'series' && document.querySelector('.pnl .legend').textContent.includes('고정') && S.frames.series.probe(1).length === 3, '같은 개념은 한 칸에 겹쳐 비교');
-  pick('time', 'wave'); check(shown() === 'pin+wave' && $$('#panels .pnl .pt')[0].textContent.startsWith('고정'), '다른 개념은 나란히 비교');
+  add('time'); check(shown() === 'pin+wave' && $$('#panels .pnl .pt')[0].textContent.startsWith('고정'), '다른 개념은 나란히 비교');
   $('pinBtn').click(); draw(); check(!S.pin && shown() === 'wave', '고정 해제');
   // 그래프 범위와 시간 범위
   reset({}); set({ xMin: '-1', xMax: '1' }); check(S.frames.series.xr[0] === -1 && S.frames.series.xr[1] === 1, '가로 범위 지정');
@@ -186,8 +209,8 @@ window.STUDIO_SELFTEST = () => {
   // 범위·확대 표시
   set({ xMin: '-1', xMax: '1' }); draw(); const badge = document.querySelector('[data-clearrange]');
   check(!!badge, '범위를 정하면 그래프에 표시'); badge.click(); draw(); check(!S.cfg.xMin && !document.querySelector('[data-clearrange]'), '표시를 눌러 범위 지우기');
-  // 함께 바뀐 조건 알림
-  reset({}); pick('dim', '2'); check($('status').textContent.includes('시간 → 파동') && $('status').textContent.includes('표현'), '함께 바뀐 조건을 알림');
+  // 함께 바뀐 개념 알림
+  reset({}); add('dim'); check($('status').textContent.includes('시간 변화 → 파동 방정식') && $('status').textContent.includes('구간'), '함께 바뀐 개념을 알림');
   // 새 변수 알림, 입력 오류 표시, 손으로 쓰는 표기
   reset({}); $('f_f').value = 'a*x'; fire($('f_f'), 'input'); check($('status').textContent.includes("'a'") && !!$('p_a'), '새 변수를 만들면 알림');
   $('f_f').value = 'x²+|x|'; fire($('f_f'), 'input'); check($('err').hidden && near(S.R.f(-2), 6, 1e-12), 'x², |x| 입력');
