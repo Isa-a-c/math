@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공업수학 시각화</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="studio">
+<div id="stage">
+  <header class="bar">
+    <strong>공업수학 시각화</strong>
+    <nav class="flow" aria-label="수업 순서">
+      <button type="button" class="btn" id="prevStep">← 이전</button>
+      <span id="stepLabel"></span>
+      <button type="button" class="btn primary" id="nextStep">다음 개념 →</button>
+    </nav>
+    <div class="row right">
+      <button type="button" class="btn" id="smaller" aria-label="글자 작게">가−</button>
+      <button type="button" class="btn" id="bigger" aria-label="글자 크게">가+</button>
+      <button type="button" class="btn" id="themeBtn">어둡게</button>
+      <button type="button" class="btn primary" id="presentBtn">발표 모드 (F)</button>
+    </div>
+  </header>
+  <div class="work">
+    <aside id="settings" aria-label="설정">
+      <h3>함수</h3>
+      <div id="baseFields"></div>
+      <div id="paramFields"></div>
+      <p class="err" id="err" role="alert" hidden></p>
+      <h3>개념</h3>
+      <div id="conceptList"></div>
+      <details class="group">
+        <summary>그래프 범위</summary>
+        <p class="hint">비워 두면 자동입니다. pi, 2L, -L처럼 써도 됩니다.</p>
+        <div class="pair"><label>가로<input class="tf" type="text" data-field="xMin" id="f_xMin" placeholder="자동"></label><span>~</span><input class="tf" type="text" data-field="xMax" id="f_xMax" placeholder="자동" aria-label="가로 끝"></div>
+        <div class="pair"><label>세로<input class="tf" type="text" data-field="yMin" id="f_yMin" placeholder="자동"></label><span>~</span><input class="tf" type="text" data-field="yMax" id="f_yMax" placeholder="자동" aria-label="세로 끝"></div>
+        <div class="pair"><label>현 끝 시간<input class="tf" type="text" data-field="tEndWave" id="f_tEndWave" placeholder="자동"></label></div>
+        <div class="pair"><label>막대 끝 시간<input class="tf" type="text" data-field="tEndHeat" id="f_tEndHeat" placeholder="자동"></label></div>
+      </details>
+      <h3>출력</h3>
+      <div class="fld"><label class="flabel" for="sheetTitle">문서 제목</label><input class="tf" id="sheetTitle" type="text" data-sheet="title"></div>
+      <div class="fld"><label class="flabel" for="sheetSubtitle">머리말 (과목, 날짜 등)</label><input class="tf" id="sheetSubtitle" type="text" data-sheet="subtitle" placeholder="예: 공업수학 2 · 2026년 2학기"></div>
+      <div class="opts">
+        <label class="ck small"><input type="checkbox" data-sheet="concept" id="optConcept">개념 설명</label>
+        <label class="ck small"><input type="checkbox" data-sheet="graph" id="optGraph">그래프</label>
+        <label class="ck small"><input type="checkbox" data-sheet="solution" id="optSolution">풀이</label>
+        <label class="ck small"><input type="checkbox" data-sheet="student" id="optStudent">학번·이름 칸</label>
+      </div>
+      <div class="fld"><label class="flabel" for="optSpace">답 쓰는 칸 (풀이를 뺄 때)</label>
+        <select id="optSpace" data-sheet="space"><option value="0">없음</option><option value="4">작게</option><option value="8">보통</option><option value="14">크게</option></select></div>
+      <div class="row">
+        <button type="button" class="btn primary" id="wordBtn">Word로 출력</button>
+        <button type="button" class="btn" id="libSave">예제 모음 저장</button>
+        <button type="button" class="btn" id="libOpen">예제 모음 열기</button>
+        <input type="file" id="libFile" accept=".json,application/json" hidden>
+      </div>
+      <p class="hint" id="savedCount"></p>
+      <ol id="savedList"></ol>
+      <p class="hint" id="status" role="status"></p>
+    </aside>
+    <div class="plotCol">
+      <div class="tools" role="toolbar" aria-label="그래프 도구">
+        <button type="button" class="btn" id="captureBtn" title="지금 그래프를 예제의 그림으로 담습니다">그래프 담기</button>
+        <button type="button" class="btn" id="pinBtn" title="지금 결과를 고정해 바꾼 결과와 비교합니다">고정</button>
+        <span class="sep"></span>
+        <span class="hint">도구</span>
+        <div class="seg" id="toolSeg">
+          <button type="button" data-tool="view" aria-pressed="true" title="보기: 값 읽기, Ctrl+휠 확대, 끌어서 이동">보기</button>
+          <button type="button" data-tool="pen" aria-pressed="false" title="펜: 그래프 위에 그리기">펜</button>
+          <button type="button" data-tool="mark" aria-pressed="false" title="점: 누른 곳의 값을 표시">점</button>
+        </div>
+        <button type="button" class="btn" id="clearInk">지우기</button>
+      </div>
+      <div id="panels"></div>
+      <div id="probe" hidden></div>
+      <div class="transport" id="transport" hidden>
+        <button type="button" class="btn" id="playBtn" title="재생" aria-label="재생">▶</button>
+        <button type="button" class="btn" id="pauseBtn" title="일시정지" aria-label="일시정지">⏸</button>
+        <button type="button" class="btn" id="stopBtn" title="정지" aria-label="정지">■</button>
+        <input id="tSlider" type="range" min="0" max="1" step="0.0025" value="0" aria-label="시간">
+        <output id="tOut"></output>
+        <label class="tlabel" for="rateSel">속도</label>
+        <select id="rateSel"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="2">×2</option></select>
+      </div>
+      <section class="summary bottom" id="bottom" aria-label="요약, 개념, 예제">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="summary">요약</button>
+          <button type="button" role="tab" data-tab="concept">개념</button>
+          <button type="button" role="tab" data-tab="example">예제 만들기</button>
+        </div>
+        <div id="tabBody"></div>
+      </section>
+    </div>
+  </div>
+</div>
+<canvas id="exportCanvas" aria-hidden="true"></canvas>
+<script src="math.js"></script>
+<script src="plot.js"></script>
+<script src="docx.js"></script>
+<script src="concepts.js"></script>
+<script src="studio.js"></script>
+</body>
+</html>

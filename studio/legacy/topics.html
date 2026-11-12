@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공업수학 시각화</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="topics">
+<main id="home">
+  <header class="homehead">
+    <h1>공업수학 시각화</h1>
+    <p>주제를 고르면 변수를 입력하고 그래프와 요약을 바로 봅니다.</p>
+  </header>
+  <div id="homeGroups"></div>
+</main>
+
+<div id="stage" hidden>
+  <header class="bar">
+    <button type="button" class="btn" id="backBtn">← 주제</button>
+    <strong id="topicTitle"></strong><span class="sec" id="topicSec"></span>
+    <div class="row right">
+      <a class="btn" id="docLink">자세한 내용 (Word)</a>
+      <button type="button" class="btn" id="smaller" aria-label="글자 작게">가−</button>
+      <button type="button" class="btn" id="bigger" aria-label="글자 크게">가+</button>
+      <button type="button" class="btn" id="themeBtn">어둡게</button>
+      <button type="button" class="btn primary" id="presentBtn">발표 모드 (F)</button>
+    </div>
+  </header>
+  <div class="work">
+    <aside id="settings" aria-label="변수 설정">
+      <div id="fields"></div>
+      <div id="paramFields"></div>
+      <p class="err" id="err" role="alert" hidden></p>
+    </aside>
+    <div class="plotCol">
+      <section class="plotBox" aria-label="그래프">
+        <div class="legend" id="legend"></div>
+        <div class="cw"><canvas id="plot" role="img"></canvas></div>
+        <div class="transport" id="transport" hidden>
+          <button type="button" class="btn" id="playBtn" title="재생" aria-label="재생">▶</button>
+          <button type="button" class="btn" id="pauseBtn" title="일시정지" aria-label="일시정지">⏸</button>
+          <button type="button" class="btn" id="stopBtn" title="정지" aria-label="정지">■</button>
+          <label class="tlabel" for="tSlider"><i>t</i></label>
+          <input id="tSlider" type="range" min="0" max="1" step="0.0025" value="0">
+          <output id="tOut"></output>
+          <label class="tlabel" for="rateSel">속도</label>
+          <select id="rateSel"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="2">×2</option></select>
+        </div>
+      </section>
+      <section class="summary" aria-label="요약" aria-live="off">
+        <h3>요약</h3>
+        <ul id="summary"></ul>
+      </section>
+    </div>
+  </div>
+</div>
+<script src="math.js"></script>
+<script src="plot.js"></script>
+<script src="series.js"></script>
+<script src="topics.js"></script>
+</body>
+</html>
