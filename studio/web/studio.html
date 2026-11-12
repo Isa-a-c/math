@@ -16,6 +16,8 @@
       <button type="button" class="btn primary" id="nextStep">다음 개념 →</button>
     </nav>
     <div class="row right">
+      <button type="button" class="btn" id="helpBtn">도움말</button>
+      <button type="button" class="btn" id="resetBtn" title="함수와 설정을 처음 상태로 돌립니다(만든 예제와 고친 설명은 그대로)">처음 상태로</button>
       <button type="button" class="btn" id="smaller" aria-label="글자 작게">가−</button>
       <button type="button" class="btn" id="bigger" aria-label="글자 크게">가+</button>
       <button type="button" class="btn" id="themeBtn">어둡게</button>
@@ -29,6 +31,7 @@
       <div id="paramFields"></div>
       <p class="err" id="err" role="alert" hidden></p>
       <h3>개념</h3>
+      <p class="hint">체크하면 Fourier 급수에서 그 개념까지 이어진 개념만 켜지고, 그래프가 그 개념으로 바뀝니다.</p>
       <div id="conceptList"></div>
       <details class="group">
         <summary>그래프 범위</summary>
@@ -51,18 +54,21 @@
         <select id="optSpace" data-sheet="space"><option value="0">없음</option><option value="4">작게</option><option value="8">보통</option><option value="14">크게</option></select></div>
       <div class="row">
         <button type="button" class="btn primary" id="wordBtn">Word로 출력</button>
+        <div class="choice" id="exportChoice" hidden role="alertdialog" aria-labelledby="choiceMsg">
+          <p id="choiceMsg"></p>
+          <div class="row"><button type="button" class="btn primary" id="choiceAdd"></button><button type="button" class="btn" id="choiceOnly">담은 예제만 출력</button><button type="button" class="btn" id="choiceCancel">취소</button></div>
+        </div>
         <button type="button" class="btn" id="libSave">예제 모음 저장</button>
         <button type="button" class="btn" id="libOpen">예제 모음 열기</button>
         <input type="file" id="libFile" accept=".json,application/json" hidden>
       </div>
       <p class="hint" id="savedCount"></p>
       <ol id="savedList"></ol>
-      <p class="hint" id="status" role="status"></p>
     </aside>
     <div class="plotCol">
       <div class="tools" role="toolbar" aria-label="그래프 도구">
         <button type="button" class="btn" id="captureBtn" title="지금 그래프를 예제의 그림으로 담습니다">그래프 담기</button>
-        <button type="button" class="btn" id="pinBtn" title="지금 결과를 고정해 바꾼 결과와 비교합니다">고정</button>
+        <button type="button" class="btn" id="pinBtn" title="지금 결과를 고정해 바꾼 결과와 비교합니다">고정(비교)</button>
         <span class="sep"></span>
         <span class="hint">도구</span>
         <div class="seg" id="toolSeg">
@@ -72,6 +78,7 @@
         </div>
         <button type="button" class="btn" id="clearInk">지우기</button>
       </div>
+      <p class="graph-err" id="graphErr" hidden></p>
       <div id="panels"></div>
       <div id="probe" hidden></div>
       <div class="transport" id="transport" hidden>
@@ -83,6 +90,7 @@
         <label class="tlabel" for="rateSel">속도</label>
         <select id="rateSel"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="2">×2</option></select>
       </div>
+      <div class="resizer" id="resizer" title="끌어서 아래 칸의 높이를 바꿉니다(더블클릭: 원래대로)" role="separator" aria-orientation="horizontal"></div>
       <section class="summary bottom" id="bottom" aria-label="요약, 개념, 예제">
         <div class="tabs" role="tablist">
           <button type="button" role="tab" data-tab="summary">요약</button>
@@ -95,6 +103,40 @@
   </div>
 </div>
 <canvas id="exportCanvas" aria-hidden="true"></canvas>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="tour" hidden>
+  <div class="tour-card" role="dialog" aria-labelledby="tourTitle">
+    <p class="hint" id="tourStep"></p>
+    <h3 id="tourTitle"></h3>
+    <p id="tourText"></p>
+    <div class="row"><button type="button" class="btn" id="tourPrev">이전</button><button type="button" class="btn primary" id="tourNext">다음</button><button type="button" class="btn" id="tourSkip">닫기</button></div>
+  </div>
+</div>
+<div id="help" hidden>
+  <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">도움말</h2>
+    <h3>시작하기</h3>
+    <ol><li>왼쪽 위에 함수를 입력합니다. 구간마다 식이 다르면 <b>구간별</b>을 고릅니다.</li><li><b>개념</b>에서 보고 싶은 개념을 체크하거나, 위쪽 <b>다음 개념 →</b>으로 순서대로 진행합니다.</li><li>그래프 아래 탭에서 요약, 개념 설명, 예제 만들기를 봅니다.</li><li><b>이 예제 담기</b>로 예제를 모으고 <b>Word로 출력</b>을 누릅니다.</li></ol>
+    <h3>함수 입력</h3>
+    <table class="help-table"><tr><th>쓰고 싶은 것</th><th>입력</th></tr>
+      <tr><td>x 제곱</td><td><code>x^2</code> 또는 <code>x²</code></td></tr><tr><td>절댓값</td><td><code>|x|</code> 또는 <code>abs(x)</code></td></tr>
+      <tr><td>곱하기</td><td><code>2x</code>, <code>2*x</code>, <code>2·x</code></td></tr><tr><td>삼각함수</td><td><code>sin x</code>, <code>sin(pi*x/L)</code> (분수가 들어가면 괄호)</td></tr>
+      <tr><td>지수함수</td><td><code>exp(x)</code> 또는 <code>e^x</code></td></tr><tr><td>π, 길이 L</td><td><code>pi</code> 또는 <code>π</code>, <code>L</code></td></tr>
+      <tr><td>부호, 계단</td><td><code>sign(x)</code>, <code>step(x)</code></td></tr><tr><td>새 변수</td><td><code>k*x</code>의 <code>k</code>처럼 쓰면 값을 넣는 칸이 생깁니다</td></tr></table>
+    <h3>문제·설명의 수식</h3>
+    <table class="help-table"><tr><th>보기</th><th>입력</th></tr>
+      <tr><td>aₙ, x²</td><td><code>$a_n$</code>, <code>$x^2$</code></td></tr><tr><td>분수</td><td><code>$\frac{1}{L}$</code></td></tr>
+      <tr><td>적분, 합</td><td><code>$\int_{-L}^{L} f\,dx$</code>, <code>$\sum_{n=1}^{\infty}$</code></td></tr><tr><td>그리스 문자</td><td><code>$\pi$</code>, <code>$\lambda_n$</code></td></tr>
+      <tr><td>가운데 수식</td><td>문단 전체를 <code>$$ … $$</code>로</td></tr><tr><td>강조 상자, 굵게</td><td>문단 앞 <code>&gt; </code>, <code>**굵게**</code></td></tr></table>
+    <h3>용어</h3>
+    <dl class="help-terms"><dt>L</dt><dd>주기의 절반입니다. 주기가 2π이면 L = π입니다. 반구간 전개·현·막대에서는 길이입니다.</dd><dt>N</dt><dd>부분합에 더하는 항의 개수입니다.</dd><dt>고정(비교)</dt><dd>지금 결과를 남겨 둡니다. 같은 개념이면 겹쳐 보이고, 다른 개념이면 나란히 보입니다.</dd><dt>그래프 담기</dt><dd>지금 그래프를 예제의 그림으로 넣습니다.</dd><dt>≈</dt><dd>근삿값입니다. = 로 적힌 정확한 값도 수치 적분에서 찾은 값이므로 출제 전에 확인하십시오.</dd></dl>
+    <h3>단축키와 그래프</h3>
+    <p>F 발표 모드 · Space 재생/일시정지 · ←/→ 이전/다음 개념 · Esc 닫기 · 그래프 위 Ctrl+휠 확대, 끌어서 이동, 더블클릭 원래대로</p>
+    <h3>저장</h3>
+    <p>만든 예제와 고친 설명은 이 PC에 자동 저장됩니다. 다른 PC로 옮기려면 <b>예제 모음 저장</b>으로 파일을 만들고, 그 PC에서 <b>예제 모음 열기</b>를 누르십시오.</p>
+    <div class="row"><button type="button" class="btn" id="tourAgain">처음 안내 다시 보기</button><button type="button" class="btn primary" id="helpClose">닫기</button></div>
+  </div>
+</div>
 <script src="math.js"></script>
 <script src="plot.js"></script>
 <script src="docx.js"></script>

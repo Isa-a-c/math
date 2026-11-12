@@ -10,8 +10,13 @@ const FUN = { sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos
   step: v => v > 0 ? 1 : v < 0 ? 0 : .5 };
 const RESERVED = ['x', 'pi', 'e', 'L'];
 
+const SUPERSCRIPT = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
+/** 손으로 쓰는 표기를 받아들입니다: x² → x^2, |x| → abs(x), 2·x, 2×x → 2*x, ÷ → /, π → pi. */
+const normalize = text => String(text).replace(/−/g, '-').replace(/[×·]/g, '*').replace(/÷/g, '/').replace(/π/g, 'pi')
+  .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, m => `^${[...m].map(c => SUPERSCRIPT[c]).join('')}`)
+  .replace(/\|([^|]+)\|/g, 'abs($1)');
 function tokenize(text) {
-  const s = text.replace(/−/g, '-').replace(/×/g, '*').replace(/π/g, 'pi');
+  const s = normalize(text);
   const re = /\s*(\d+\.?\d*(?:[eE][-+]?\d+)?|\.\d+|[A-Za-z_][A-Za-z0-9_]*|\*\*|<=|>=|==|[-+*/^()?:<>])/y;
   const tokens = [];
   let i = 0;
@@ -19,7 +24,7 @@ function tokenize(text) {
     if (!s.slice(i).trim()) break;
     re.lastIndex = i;
     const m = re.exec(s);
-    if (!m) throw new Error(`'${s.slice(i).trim()[0]}' 문자는 수식에 쓸 수 없습니다.`);
+    if (!m) throw new Error(`'${s.slice(i).trim()[0]}' 문자는 수식에 쓸 수 없습니다. 곱하기는 *, 거듭제곱은 ^, 절댓값은 abs(x) 또는 |x|로 씁니다.`);
     tokens.push(m[1] === '**' ? '^' : m[1]);
     i = re.lastIndex;
   }
@@ -117,7 +122,7 @@ function compile(text) {
     throw new Error(`'${v}'를 여기에 쓸 수 없습니다.`);
   }
   const fn = ternary();
-  if (p < t.length) throw new Error(`'${t[p]}' 부근의 수식을 확인하십시오.`);
+  if (p < t.length) throw new Error(t[p] === ')' ? '닫는 괄호 )가 여는 괄호보다 많습니다.' : `'${t[p]}' 부근의 수식을 확인하십시오. 연산자(+, −, *, /)가 빠졌는지 보십시오.`);
   if (params.size > 4) throw new Error('매개변수는 4개까지 쓸 수 있습니다.');
   return { fn, params: [...params] };
 }

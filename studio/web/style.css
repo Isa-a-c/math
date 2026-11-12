@@ -380,3 +380,36 @@ details.group summary { cursor: pointer; font-size: .82rem; color: var(--muted);
 body.present .tools .hint { display: none; }
 /* 맑은 고딕은 역슬래시(\)를 원화 기호로 그리므로, 수식을 쓰는 칸은 Consolas를 먼저 씁니다. */
 .editor textarea.tf, .hint.tex, #conceptText { font-family: Consolas, "Malgun Gothic", monospace; }
+
+/* 처음 쓰는 사람을 위한 안내, 알림, 경고 */
+#status { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 40; max-width: min(720px, 90vw); background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; font-size: .9rem; box-shadow: 0 4px 14px rgba(0, 0, 0, .25); }
+#status:empty { display: none; }
+#status .mini { margin-left: 8px; background: var(--paper); color: var(--ink); }
+.graph-err { margin: 0; padding: 4px 10px; background: var(--hot-soft); border: 1px solid var(--hot); border-radius: 4px; color: var(--ink); font-size: .88rem; }
+.warn { color: var(--hot); font-size: .84rem; margin: 4px 0 0; }
+.warn .mini { margin-left: 4px; }
+.choice { border: 1px solid var(--hot); background: var(--hot-soft); border-radius: 4px; padding: 6px 8px; margin: 6px 0; font-size: .88rem; width: 100%; }
+.choice p { margin: 0 0 6px; }
+.badge { border: 1px solid var(--hot); background: var(--hot-soft); color: var(--ink); border-radius: 10px; font-size: .74rem; padding: 0 8px; cursor: pointer; }
+.pnl .badges { display: inline-flex; gap: 4px; margin-left: auto; }
+.resizer { flex: none; height: 6px; margin: -3px 0; cursor: row-resize; border-radius: 3px; background: linear-gradient(var(--line), var(--line)) center / 40px 2px no-repeat; }
+.resizer:hover { background-color: var(--band); }
+#tour { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+.tour-card { pointer-events: auto; position: fixed; right: 24px; bottom: 70px; width: min(420px, 92vw); background: var(--surface); border: 2px solid var(--blue); border-radius: 8px; padding: 12px 16px; box-shadow: 0 8px 30px rgba(0, 0, 0, .25); }
+.tour-card h3 { font-size: 1.1rem; margin: 2px 0 6px; }
+.tour-card p { margin: 0 0 10px; line-height: 1.6; }
+.spot { outline: 3px solid var(--blue) !important; outline-offset: 2px; border-radius: 4px; }
+#help { position: fixed; inset: 0; z-index: 50; background: rgba(0, 0, 0, .35); display: flex; align-items: center; justify-content: center; }
+#help[hidden] { display: none; }
+.help-card { background: var(--surface); width: min(760px, 94vw); max-height: 88vh; overflow-y: auto; border-radius: 8px; padding: 16px 22px; }
+.help-card h2 { font-size: 1.3rem; margin: 0 0 8px; }
+.help-card h3 { font-size: .95rem; margin: 14px 0 4px; color: var(--ink2); }
+.help-card ol { margin: 0; padding-left: 1.3em; line-height: 1.7; }
+.help-table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.help-table th, .help-table td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; }
+.help-table th { background: var(--band); }
+.help-card code { font-family: Consolas, monospace; background: var(--band); padding: 0 3px; border-radius: 3px; }
+.help-terms { display: grid; grid-template-columns: max-content 1fr; gap: 3px 12px; margin: 0; font-size: .9rem; }
+.help-terms dt { font-weight: 600; }
+.help-terms dd { margin: 0; }
+@media (max-height: 820px) { body.studio .bar { padding: 4px 10px; } body.studio .plotCol { gap: 4px; padding: 5px 8px; } .summary.bottom { max-height: 28%; } .summary.bottom.tall { max-height: 50%; } }

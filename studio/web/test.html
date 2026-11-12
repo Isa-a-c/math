@@ -37,6 +37,7 @@ truth(closedForm(4 / PI) === '4/π' && closedForm(-2 / (3 * PI)) === '−2/(3π)
 // 잘못된 입력
 for (const bad of ['sin', '1/', 'x+#', '(x', 'a+b+c+d+f']) { let failed = false; try { compile(bad); } catch { failed = true; } truth(failed, `입력 오류 ${bad}`); }
 for (const bad of ['1/x', 'log(x)']) { let failed = false; try { series(bad, {}, PI); } catch { failed = true; } truth(failed, `유계가 아닌 함수 ${bad}`); }
+truth(compile('x²').fn(3, {}) === 9 && compile('|x - 2|').fn(0, {}) === 2 && compile('2·x').fn(4, {}) === 8 && compile('6÷3').fn(0, {}) === 2 && compile('2x³').fn(2, {}) === 16, '손으로 쓰는 표기 x², |x|, 2·x, ÷');
 truth(Math.abs(compile('sin 2x').fn(PI / 4, {}) - 1) < 1e-12 && Math.abs(compile('sin x cos x').fn(PI / 4, {}) - .5) < 1e-12 && Math.abs(compile('2 sin x + 1').fn(PI / 2, {}) - 3) < 1e-12, '괄호 없는 함수 표기');
 truth(compile('2x+3k').params[0] === 'k' && compile('2 sin(x)').fn(PI / 2, {}) === 2 && compile('-x^2').fn(3, {}) === -9, '수식 해석');
 

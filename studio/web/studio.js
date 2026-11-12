@@ -17,11 +17,12 @@ const DEFAULTS = {
 const SHEET = { title: '공업수학 예제', subtitle: '', concept: true, graph: true, solution: true, student: false, space: '8' };
 const copy = v => JSON.parse(JSON.stringify(v));
 const mergeCfg = c => ({ ...copy(DEFAULTS), ...(c ?? {}), on: { ...DEFAULTS.on, ...(c?.on ?? {}) }, params: { ...(c?.params ?? {}) } });
-const emptyDraft = () => ({ items: [], figures: [], editing: null, custom: false });
+const emptyDraft = () => ({ items: [], figures: [], editing: null, custom: false, dirty: false });
 const S = {
   cfg: copy(DEFAULTS), good: null, R: null, dirty: true, playing: false, rate: 1, last: 0, paramKey: '', panelKey: '', tab: 'summary', lastTab: '',
   draft: emptyDraft(), saved: [], edits: {}, sheet: copy(SHEET), editingConcept: null,
-  zoom: null, pin: null, tool: 'view', ink: {}, marks: {}, frames: {}, hover: null, drawingKey: '', noSave: false,
+  zoom: null, pin: null, tool: 'view', ink: {}, marks: {}, frames: {}, hover: null, drawingKey: '', noSave: false, fakeDownload: false,
+  ready: false, knownParams: new Set(), statusAct: null, undoCfg: null, tourStep: -1,
 };
 
 /* ── 값 읽기 ───────────────────────────────────────── */
@@ -44,7 +45,7 @@ function rangeOf(cfg, a, b, label, L) {
 }
 function fnOf(cfg, key, label, L) {
   let c;
-  try { c = compile(String(cfg[key])); } catch (e) { throw new Error(`${label}: ${e.message}`); }
+  try { c = compile(String(cfg[key])); } catch (e) { throw new Error(`${label}: ${e.message} (예: x^2, sin x, |x|, x<0 ? -1 : 1)`); }
   const P = { ...cfg.params, L };
   return x => c.fn(x, P);
 }
@@ -97,40 +98,61 @@ function compute(cfg) {
 const timeOf = (part, cfg) => part ? cfg.s * part.tEnd : 0;
 
 /* ── 정확한 값과 글자 ─────────────────────────────── */
-/** 닫힌 꼴이 있으면 그 꼴로, 없으면 소수로 씁니다. π, π²의 유리수배와 분모가 큰 경우(예: 4/(49π²))도 찾습니다. */
-function coefText(value) {
-  const form = closedForm(value);
-  if (form) return form;
-  const sign = value < 0 ? '−' : '', u = Math.abs(value);
-  for (const [scale, show] of [[PI * PI, (r, q) => `${r > 1 ? r : ''}π²${q > 1 ? `/${q}` : ''}`], [1 / (PI * PI), (r, q) => `${r}/${q > 1 ? `(${q}π²)` : 'π²'}`], [1 / PI, (r, q) => `${r}/${q > 1 ? `(${q}π)` : 'π'}`], [1, (r, q) => `${r}${q > 1 ? `/${q}` : ''}`]]) {
+const CLOSED_FORMS = [
+  [1, (r, q) => `${r}${q > 1 ? `/${q}` : ''}`],
+  [1 / PI, (r, q) => `${r}/${q > 1 ? `(${q}π)` : 'π'}`],
+  [PI, (r, q) => `${r > 1 ? r : ''}π${q > 1 ? `/${q}` : ''}`],
+  [1 / (PI * PI), (r, q) => `${r}/${q > 1 ? `(${q}π²)` : 'π²'}`],
+  [PI * PI, (r, q) => `${r > 1 ? r : ''}π²${q > 1 ? `/${q}` : ''}`],
+];
+/** r/q, r/(qπ), rπ/q, r/(qπ²), rπ²/q 꼴의 후보를 찾습니다. {text, value} 또는 null입니다. */
+function closedSearch(value) {
+  if (Math.abs(value) < 1e-12) return { text: '0', value: 0 };
+  const sign = value < 0 ? -1 : 1, u = Math.abs(value);
+  for (const [scale, show] of CLOSED_FORMS) {
     const w = u / scale;
-    for (let q = 1; q <= 100; q++) { const r = Math.round(w * q); if (r >= 1 && r <= 64 && Math.abs(w * q - r) < 2e-6 * q) return sign + show(r, q); }
+    for (let q = 1; q <= 100; q++) { const r = Math.round(w * q); if (r >= 1 && r <= 200 && Math.abs(w * q - r) < 2e-6 * q) return { text: (sign < 0 ? '−' : '') + show(r, q), value: sign * r / q * scale }; }
   }
-  return fmt(value, 4);
+  return null;
 }
+/** 화면용: 닫힌 꼴이 있으면 그 꼴로, 없으면 소수로 씁니다. */
+const coefText = value => closedSearch(value)?.text ?? fmt(value, 4);
+/** 계수 표기: 촘촘한 적분값이 닫힌 꼴과 1e-9 안에서 맞을 때만 정확한 값(sure)으로, 아니면 소수 근삿값으로 씁니다. */
+function exact(value) {
+  const c = closedSearch(value);
+  return c && Math.abs(c.value - value) <= 1e-9 * Math.max(1, Math.abs(value)) ? { text: c.text, sure: true } : { text: fmt(value, 4), sure: false };
+}
+const rel = e => e.sure ? '=' : '\\approx';
 /** 작은 오차도 0으로 보이지 않게 유효숫자 3자리로 씁니다. */
 const errText = v => v >= .01 || v === 0 ? fmt(v, 4) : v.toPrecision(3);
-/** 화면 계수(2048칸)보다 촘촘한 적분으로 계수를 다시 구해 닫힌 꼴을 찾기 쉽게 합니다. kind는 'a0', 'a', 'b'입니다. */
+/** 중점 적분을 두 격자(32768, 65536칸)로 하고 Richardson 외삽으로 오차를 줄입니다. 도약이 격자점에 있지 않으면 정확도가 떨어지며, 그때는 근삿값(≈)으로 표시됩니다. */
+function integrate(fn, a, b) {
+  const mid = q => { const h = (b - a) / q; let s = 0; for (let j = 0; j < q; j++) s += fn(a + (j + .5) * h); return s * h; };
+  return (4 * mid(65536) - mid(32768)) / 3;
+}
+/** 계수를 촘촘한 적분으로 다시 구합니다. kind는 'a0', 'a', 'b'입니다. */
 function fineCoef(model, kind, n = 0) {
   model.fine ??= {};
   const key = `${kind}${n}`;
   if (key in model.fine) return model.fine[key];
-  const q = 32768, L = model.L, h = 2 * L / q, w = n * PI / L;
-  let s = 0;
-  for (let j = 0; j < q; j++) { const x = -L + (j + .5) * h, y = model.ext(x); s += kind === 'a0' ? y : kind === 'a' ? y * Math.cos(w * x) : y * Math.sin(w * x); }
-  return (model.fine[key] = kind === 'a0' ? s * h / (2 * L) : s * h / L);
+  const L = model.L, w = n * PI / L, g = kind === 'a0' ? model.ext : kind === 'a' ? x => model.ext(x) * Math.cos(w * x) : x => model.ext(x) * Math.sin(w * x);
+  const s = integrate(g, -L, L);
+  return (model.fine[key] = kind === 'a0' ? s / (2 * L) : s / L);
 }
+const halfCache = new WeakMap();
 /** (0, L)에서의 반구간 계수입니다. n = 0이면 평균입니다. */
 function fineHalf(fn, L, n, cosine) {
-  const q = 32768, h = L / q, w = n * PI / L;
-  let s = 0;
-  for (let j = 0; j < q; j++) { const x = (j + .5) * h; s += fn(x) * (n === 0 ? 1 : cosine ? Math.cos(w * x) : Math.sin(w * x)); }
-  return n === 0 ? s * h / L : 2 * s * h / L;
+  const memo = halfCache.get(fn) ?? new Map(), key = `${L}|${n}|${cosine}`;
+  halfCache.set(fn, memo);
+  if (memo.has(key)) return memo.get(key);
+  const w = n * PI / L, s = integrate(n === 0 ? fn : cosine ? x => fn(x) * Math.cos(w * x) : x => fn(x) * Math.sin(w * x), 0, L), v = n === 0 ? s / L : 2 * s / L;
+  memo.set(key, v);
+  return v;
 }
 const argOf = (n, L) => { const c = n === 1 ? '' : n; if (Math.abs(L - PI) < 1e-9) return `${c}x`; if (Math.abs(L - 1) < 1e-9) return `${c}πx`; return `${c}πx/${fmt(L, 3)}`; };
 /** [[계수, 뒤에 붙는 글자], …]를 '4/π sin x − 1/2 cos 2x + ⋯'처럼 씁니다. */
 function termsText(terms, more = true) {
-  const parts = terms.map(([value, tail]) => { const size = coefText(Math.abs(value)), lead = tail && size === '1' ? '' : size; return [value < 0, `${lead}${tail && lead ? ' ' : ''}${tail}`]; });
+  const parts = terms.map(([value, tail]) => { const size = exact(Math.abs(value)).text, lead = tail && size === '1' ? '' : size; return [value < 0, `${lead}${tail && lead ? ' ' : ''}${tail}`]; });
   if (!parts.length) return '0';
   return parts.map(([neg, text], i) => (i ? (neg ? ' − ' : ' + ') : neg ? '−' : '') + text).join('') + (more ? ' + ⋯' : '');
 }
@@ -312,7 +334,7 @@ const PANELS = {
       const b = box(w, h, C), xr = rangeX([-H.X, H.X], R), yr = rangeY(H.yr, R), M = axes(ctx, b, xr, yr, C, {});
       curve(ctx, R.f, b, xr, M, C.muted, 1.5, [], [6, 5]);
       if (refH) curve(ctx, x => refH.u(x, timeOf(refH, cfg)), b, xr, M, C.green, 2.5, [], [7, 5], 2);
-      curve(ctx, x => H.u(x, t), b, xr, M, C.hot, 3, [], null, 2);
+      curve(ctx, x => H.u(x, t), b, xr, M, C.hot, 3, [], null, S.playing ? 4 : 2);
       return { title: `무한 막대  t = ${fmt(t, 3)}`, frame: { b, xr, yr }, legend: [['--hot', uxt], ['--muted', '처음 온도', true], ...(refH ? [pinLabel(uxt)] : [])], probe: x => [['u', H.u(x, t)], ['처음', R.f(x)]] };
     }
     const [p, q] = stacked(w, h, C, .55), xr = rangeX([0, H.L], R), yr = rangeY(H.yr, R), M = axes(ctx, p, xr, yr, C, { xTicks: piTicks(xr, H.L, H.L / 4), noXLabels: true });
@@ -342,7 +364,7 @@ const symHtml = model => model.sym === 'odd' ? '기함수이므로 aₙ = 0인 �
 function summary(cfg, R) {
   const out = [], model = R.series, J = model.jumps[0];
   out.push(['Fourier 급수', `${symHtml(model)} ${m(`<i>f</i>(<i>x</i>) ≈ ${termsText(seriesTerms(model))}`)}, 항 ${cfg.N}개의 제곱오차 ${m(`<i>E</i>* = ${errText(squareError(model, cfg.N))}`)}`]);
-  if (cfg.on.coef) { const v = fineCoef(model, cfg.coefKind, cfg.coefN); out.push(['계수의 의미', `곱한 곡선의 넓이 ${m(fmt(v * model.L, 4))}를 ${m('<i>L</i>')}로 나누면 ${m(`<i>${cfg.coefKind}</i><sub>${cfg.coefN}</sub> = ${coefText(v)}`)}입니다.${Math.abs(v) < 1e-6 * Math.max(model.span, 1e-9) ? ' 넓이가 상쇄되어 이 파동은 함수에 없습니다.' : ''}`]); }
+  if (cfg.on.coef) { const v = fineCoef(model, cfg.coefKind, cfg.coefN), e = exact(v); out.push(['계수의 의미', `곱한 곡선의 넓이 ${m(fmt(v * model.L, 4))}를 ${m('<i>L</i>')}로 나누면 ${m(`<i>${cfg.coefKind}</i><sub>${cfg.coefN}</sub> ${e.sure ? '=' : '≈'} ${e.text}`)}입니다.${Math.abs(v) < 1e-6 * Math.max(model.span, 1e-9) ? ' 넓이가 상쇄되어 이 파동은 함수에 없습니다.' : ''}`]); }
   if (cfg.on.spectrum) { const p = decayPower(model); out.push(['계수 크기', p === null ? decayWords(p) : `계수가 약 ${m(`1/<i>n</i><sup>${fmt(p, 1)}</sup>`)}로 줄어듭니다. ${decayWords(p)}`]); }
   if (cfg.on.gibbs) out.push(['수렴과 도약', J ? `${m(`<i>x</i> = ${piLabel(J.x, model.L)}`)}에서 합은 평균 ${m(fmt((J.left + J.right) / 2, 3))}, ${m(`<i>S</i><sub>${cfg.N}</sub> = ${fmt(partialSum(model, cfg.N, J.x), 4)}`)}입니다. 봉우리 초과량은 도약의 ${m(`${(overshoot(model, J, cfg.N) * 100).toFixed(1)}%`)}입니다.` : '도약이 없어 모든 점에서 f(x)로 수렴합니다.']);
   if (cfg.on.half) out.push(['반구간 전개', `(0, L)의 함수를 ${cfg.halfMode === 'cosine' ? '우함수로 확장해 코사인' : '기함수로 확장해 사인'} 항만 남겼습니다.${needsHalf(cfg) ? ' 현·막대의 해가 이 전개를 씁니다.' : ''}`]);
@@ -378,7 +400,8 @@ const autoItems = cfg => ['series', ...['coef', 'spectrum', 'gibbs', 'wave', 'he
 const missing = kind => { const c = KINDS[kind].concept; return `(이 소문항에 필요한 개념 '${conceptOf(c).title}'이 꺼져 있습니다. 개념을 켜거나 문장을 직접 쓰십시오.)`; };
 const symMarkup = model => model.sym === 'odd' ? '기함수이므로 $a_n = 0$인 사인 급수입니다.' : model.sym === 'even' ? '우함수이므로 $b_n = 0$인 코사인 급수입니다.' : '대칭이 없어 사인 항과 코사인 항이 모두 나옵니다.';
 const firstNonzero = (get, count, tol) => { const out = []; for (let n = 1; n <= NMAX && out.length < count; n++) if (Math.abs(get(n)) >= tol) out.push(n); return out; };
-const valueEq = (name, pairs) => `$$${pairs.map(([n, v]) => `${name}_{${n}} = ${v}`).join(',\\quad ')},\\ \\ldots$$`;
+const valueEq = (name, pairs) => `$$${pairs.map(([n, v]) => { const e = exact(v); return `${name}_{${n}} ${rel(e)} ${e.text}`; }).join(',\\quad ')},\\ \\ldots$$`;
+const EXACT_NOTE = '= 로 적은 값은 수치 적분 결과와 맞는 정확한 꼴이고, ≈ 로 적은 값은 근삿값입니다. 출제 전에 확인하십시오.';
 /** 소문항의 자동 문장입니다. */
 function problemText(kind, cfg, R) {
   const c = KINDS[kind].concept;
@@ -411,10 +434,11 @@ function solutionText(kind, cfg, R) {
   if (c && c !== 'series' && !cfg.on[c]) return missing(kind);
   const model = R.series, tol = 1e-6 * Math.max(model.span, 1e-9), Ls = lengthText(cfg), out = [], J = model.jumps[0];
   const coefLines = () => {
-    if (Math.abs(model.a0) >= tol) out.push(`$$a_0 = ${coefText(fineCoef(model, 'a0'))}$$`);
+    if (Math.abs(model.a0) >= tol) { const e = exact(fineCoef(model, 'a0')); out.push(`$$a_0 ${rel(e)} ${e.text}$$`); }
     const an = firstNonzero(n => model.a[n], 5, tol), bn = firstNonzero(n => model.b[n], 5, tol);
-    if (an.length) out.push(valueEq('a', an.map(n => [n, coefText(fineCoef(model, 'a', n))])));
-    if (bn.length) out.push(valueEq('b', bn.map(n => [n, coefText(fineCoef(model, 'b', n))])));
+    if (an.length) out.push(valueEq('a', an.map(n => [n, fineCoef(model, 'a', n)])));
+    if (bn.length) out.push(valueEq('b', bn.map(n => [n, fineCoef(model, 'b', n)])));
+    out.push(EXACT_NOTE);
   };
   switch (kind) {
     case 'series':
@@ -434,7 +458,7 @@ function solutionText(kind, cfg, R) {
       out.push(`그림의 부분합은 $N = ${cfg.N}$입니다.`);
       out.push(J ? `도약점 $x = ${piLabel(J.x, model.L)}$에서 부분합은 두 극한 ${fmt(J.left, 4)}, ${fmt(J.right, 4)}의 평균인 ${fmt((J.left + J.right) / 2, 4)}을 지납니다.` : `제곱오차는 $E^* = ${errText(squareError(model, cfg.N))}$입니다.`);
       break;
-    case 'coef': { const v = fineCoef(model, cfg.coefKind, cfg.coefN); out.push(`곱한 곡선의 넓이는 ${fmt(v * model.L, 4)}이고, 이를 $L$로 나누면 $${cfg.coefKind}_{${cfg.coefN}} = ${coefText(v)}$입니다. ${Math.abs(v) < tol ? '넓이가 상쇄되어 이 파동은 함수에 들어 있지 않습니다.' : '넓이가 한쪽으로 쌓일수록 이 파동의 비중이 큽니다.'}`); break; }
+    case 'coef': { const v = fineCoef(model, cfg.coefKind, cfg.coefN), e = exact(v); out.push(`곱한 곡선의 넓이는 ${fmt(v * model.L, 4)}이고, 이를 $L$로 나누면 $${cfg.coefKind}_{${cfg.coefN}} ${rel(e)} ${e.text}$입니다. ${Math.abs(v) < tol ? '넓이가 상쇄되어 이 파동은 함수에 들어 있지 않습니다.' : '넓이가 한쪽으로 쌓일수록 이 파동의 비중이 큽니다.'}`); break; }
     case 'spectrum': { const p = decayPower(model); out.push(p === null ? decayWords(p) : `계수의 포락선이 $1/n^{${fmt(p, 1)}}$처럼 줄어듭니다. ${decayWords(p)}`); break; }
     case 'gibbs':
       out.push(J ? `$x = ${piLabel(J.x, model.L)}$에서 왼쪽 극한 ${fmt(J.left, 4)}, 오른쪽 극한 ${fmt(J.right, 4)}이므로 급수의 합은 평균 ${fmt((J.left + J.right) / 2, 4)}입니다. $N = ${cfg.N}$일 때 봉우리 초과량은 도약 크기의 ${(overshoot(model, J, cfg.N) * 100).toFixed(1)}%이며, $N$을 늘려도 약 9%로 남습니다(Gibbs 현상).` : '함수가 연속이고 구분적으로 매끄러워 모든 점에서 $f(x)$로 수렴합니다.');
@@ -444,8 +468,9 @@ function solutionText(kind, cfg, R) {
       if (cfg.waveDomain !== 'finite') { out.push(String.raw`D’Alembert 해 $u = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$` + `에 $c = ${fmt(W.speed, 3)}$을 넣습니다. 초기 모양의 절반이 속도 ${fmt(W.speed, 3)}로 오른쪽과 왼쪽으로 이동하며, 모양은 변하지 않습니다.`); break; }
       const Bn = firstNonzero(n => fineHalf(R.f, R.L, n, false), 4, tol), Vn = firstNonzero(n => fineHalf(W.g, R.L, n, false), 4, tol);
       out.push(`변수분리로 $\\lambda_n = cn\\pi/L = ${coefText(W.omega(1))}n$이고, 계수는 초기 변위와 초기 속도의 반구간 사인 계수에서 나옵니다.`);
-      if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, coefText(fineHalf(R.f, R.L, n, false))])));
-      if (Vn.length) out.push(valueEq('B^*', Vn.map(n => [n, coefText(fineHalf(W.g, R.L, n, false) / W.omega(n))])));
+      if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, fineHalf(R.f, R.L, n, false)])));
+      if (Vn.length) out.push(valueEq('B^*', Vn.map(n => [n, fineHalf(W.g, R.L, n, false) / W.omega(n)])));
+      out.push(EXACT_NOTE);
       const terms = Bn.slice(0, 3).map(n => [fineHalf(R.f, R.L, n, false), `cos ${coefText(W.omega(n))}t · sin ${argOf(n, R.L)}`]);
       if (terms.length) out.push(`$$u(x,t) \\approx ${termsText(terms)}$$`);
       out.push(`현은 주기 $2L/c = ${fmt(W.T, 4)}$로 처음 모양으로 돌아옵니다.`);
@@ -457,12 +482,13 @@ function solutionText(kind, cfg, R) {
       if (cfg.bc === 'fixed') {
         const v = x => R.f(x) - H.steady(x), Bn = firstNonzero(n => fineHalf(v, R.L, n, false), 4, tol);
         out.push(`정상 상태는 $U(x) = ${fmt(H.left, 4)} + ${fmt(H.right - H.left, 4)}x/L$이고, $f - U$의 반구간 사인 계수가 $B_n$입니다. 감쇠율은 $\\lambda_n^2 = c^2(n\\pi/L)^2 = ${fmt(H.rate(1), 4)}n^2$입니다.`);
-        if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, coefText(fineHalf(v, R.L, n, false))])));
+        if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, fineHalf(v, R.L, n, false)])));
         out.push(`첫 모드가 절반으로 줄어드는 시간은 $\\ln 2/\\lambda_1^2 = ${fmt(Math.LN2 / H.rate(1), 4)}$입니다.`);
       } else {
         const An = firstNonzero(n => fineHalf(R.f, R.L, n, true), 4, tol);
-        out.push(`단열 조건에서는 코사인 급수가 나오고, 온도는 평균 $A_0 = ${coefText(fineHalf(R.f, R.L, 0, true))}$으로 갑니다.`);
-        if (An.length) out.push(valueEq('A', An.map(n => [n, coefText(fineHalf(R.f, R.L, n, true))])));
+        const e0 = exact(fineHalf(R.f, R.L, 0, true));
+        out.push(`단열 조건에서는 코사인 급수가 나오고, 온도는 평균 $A_0 ${rel(e0)} ${e0.text}$으로 갑니다.`);
+        if (An.length) out.push(valueEq('A', An.map(n => [n, fineHalf(R.f, R.L, n, true)])));
       }
       break;
     }
@@ -523,13 +549,22 @@ function importLibrary(text) {
   return list.length;
 }
 function download(blob, name) {
+  if (S.fakeDownload) { S.lastDownload = name; return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name.replace(/[\\/:*?"<>|]/g, '_');
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
 let statusTimer = 0;
-function setStatus(text) { $('status').textContent = text; clearTimeout(statusTimer); statusTimer = setTimeout(() => { $('status').textContent = ''; }, 6000); }
+/** 화면 아래 가운데에 알림을 띄웁니다. action({label, fn})을 주면 단추가 함께 나옵니다. */
+function setStatus(text, action = null) {
+  $('status').innerHTML = `${esc(text)}${action ? ` <button type="button" class="mini" id="statusAct">${esc(action.label)}</button>` : ''}`;
+  S.statusAct = action?.fn ?? null;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $('status').innerHTML = ''; S.statusAct = null; }, action ? 12000 : 7000);
+}
+/* 프로그램 창(app.py)이 파일을 저장한 뒤 부릅니다. */
+window.studioSaved = (path, opened) => setStatus(opened === false ? `저장했습니다: ${path} (이 PC에서 Word 문서를 열 프로그램을 찾지 못했습니다. 파일은 저장되었습니다.)` : `저장했습니다: ${path}`);
 
 /* ── Word 출력 ─────────────────────────────────────── */
 const conceptMarkup = id => S.edits[id] ?? CONCEPT_MARKUP[id];
@@ -568,8 +603,18 @@ function exportBlocks() {
   return blocks;
 }
 const docOptions = () => ({ subtitle: S.sheet.subtitle.trim(), student: !!S.sheet.student });
-function exportWord() {
+/** 담은 예제가 있는데 지금 예제를 담지 않았거나 고친 내용을 저장하지 않았으면 먼저 묻습니다. */
+function exportWord(force = false) {
   if (!S.good) return;
+  if (!force && S.saved.length && S.draft.dirty) {
+    $('choiceMsg').textContent = S.draft.editing !== null ? `예제 ${S.draft.editing + 1}에서 고친 내용을 아직 저장하지 않았습니다.` : '지금 만드는 예제는 아직 담지 않아 Word에 들어가지 않습니다.';
+    $('choiceAdd').textContent = S.draft.editing !== null ? '저장하고 출력' : '이 예제도 담고 출력';
+    $('exportChoice').hidden = false;
+    $('exportChoice').scrollIntoView({ block: 'nearest' });
+    setStatus("Word로 출력하기 전에 확인할 것이 있습니다. 왼쪽 'Word로 출력' 아래를 보십시오.");
+    return;
+  }
+  $('exportChoice').hidden = true;
   try {
     const title = S.sheet.title.trim() || '공업수학 예제', doc = buildDocx(title, exportBlocks(), docOptions());
     S.lastDoc = doc;
@@ -594,6 +639,13 @@ function select(id) {
 }
 /** 체크하면 그 개념을 고르고, 해제하면 바로 위 개념으로 돌아갑니다(아래 개념도 함께 해제). */
 function toggle(id, on) { if (id !== 'series') select(on ? id : parentOf(id, S.cfg)); }
+/** 체크로 다른 개념이 함께 켜지거나 꺼졌으면 알려 줍니다. */
+function noticeChanges(before, target) {
+  const names = ids => ids.map(k => `'${conceptOf(k).title}'`).join(', ');
+  const on = Object.keys(S.cfg.on).filter(k => S.cfg.on[k] && !before[k] && k !== target), off = Object.keys(S.cfg.on).filter(k => !S.cfg.on[k] && before[k] && k !== target);
+  const text = [on.length ? `바탕 개념 ${names(on)}도 켰습니다.` : '', off.length ? `${names(off)}은(는) ${S.cfg.on[target] ? '다른 갈래라서' : '바탕 개념이 꺼져'} 껐습니다.` : ''].filter(Boolean).join(' ');
+  if (text) setStatus(text);
+}
 function step(dir) {
   const i = FLOW.indexOf(deepestOf(S.cfg)), j = Math.max(0, Math.min(FLOW.length - 1, i + dir));
   if (j === i) return;
@@ -639,7 +691,7 @@ function fHtml(cfg) {
   return `${mode}<div class="fld"><span class="hint">구간 ${halfDomain(cfg) ? '0' : '−L'} ~ L을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
 }
 function renderSettings() {
-  const cfg = S.cfg, base = [{ k: 'L', type: 'text', label: cfg.on.half ? '길이 L' : '반주기 L', hint: 'pi, 2, 1/2' }, { k: 'N', type: 'range', label: '항의 개수 N', min: 1, max: 100 }, ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '무한 영역에서 보이는 범위 X' }] : [])];
+  const cfg = S.cfg, base = [{ k: 'L', type: 'text', label: halfDomain(cfg) ? '길이 L' : '반주기 L (주기의 절반)', hint: halfDomain(cfg) ? 'pi, 2, 1/2처럼 씁니다.' : 'pi, 2, 1/2처럼 씁니다. 주기가 2π이면 pi' }, { k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 100 }, ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '무한 영역에서 보이는 범위 X' }] : [])];
   $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml(f, cfg)).join('');
   renderPreview();
   S.panelKey = '';   // 목록을 다시 그렸으므로 '그래프에 보이는 개념' 표시도 다시 붙입니다.
@@ -657,8 +709,10 @@ function renderSettings() {
 function renderParams(force) {
   const cfg = S.cfg, names = new Set();
   for (const key of ['f', ...(cfg.on.wave ? ['g'] : [])]) { try { compile(String(cfg[key])).params.forEach(p => names.add(p)); } catch { /* 입력 중인 수식 */ } }
-  const list = [...names];
+  const list = [...names], fresh = list.filter(p => !S.knownParams.has(p));
   for (const p of list) if (!(p in cfg.params)) cfg.params[p] = 1;
+  if (!force && fresh.length) setStatus(`수식의 ${fresh.map(p => `'${p}'`).join(', ')}를 변수로 만들었습니다(값 ${fresh.map(p => cfg.params[p]).join(', ')}). 오타라면 수식을 고치십시오.`);
+  S.knownParams = new Set(list);
   const key = list.join(',');
   if (!force && key === S.paramKey) return;
   S.paramKey = key;
@@ -669,7 +723,7 @@ function renderSheet() {
 }
 function renderSaved() {
   $('savedList').innerHTML = S.saved.map((e, i) => `<li class="${S.draft.editing === i ? 'editing' : ''}"><span>${i + 1}. ${esc(prettyExpr(e.cfg.f, e.cfg.params))} · 소문항 ${e.items.length} · 그림 ${e.figures.length}</span><span class="acts"><button type="button" class="mini" data-edit="${i}">고치기</button><button type="button" class="x" data-smove="${i}" data-dir="-1" aria-label="${i + 1}번 위로">↑</button><button type="button" class="x" data-smove="${i}" data-dir="1" aria-label="${i + 1}번 아래로">↓</button><button type="button" class="x" data-unsave="${i}" aria-label="${i + 1}번 빼기">×</button></span></li>`).join('');
-  $('savedCount').textContent = S.saved.length ? `담은 예제 ${S.saved.length}개 (Word에 이 순서로 들어갑니다)` : "담은 예제가 없으면 '예제 만들기'에서 만드는 예제를 출력합니다.";
+  $('savedCount').textContent = S.saved.length ? `담은 예제 ${S.saved.length}개 (Word에 이 순서로 들어갑니다). 다른 PC로 옮기려면 '예제 모음 저장'을 쓰십시오.` : "담은 예제가 없으면 '예제 만들기'에서 만드는 예제를 출력합니다.";
 }
 function setSeg(key, value) {
   const cfg = S.cfg;
@@ -679,7 +733,10 @@ function setSeg(key, value) {
   if (key === 'heatDomain' && cfg.on.heat) select('heat');
   if (key === 'bc' && cfg.on.heat && cfg.heatDomain === 'finite') cfg.halfMode = value === 'insulated' ? 'cosine' : 'sine';
 }
-function showError(text) { $('err').textContent = text; $('err').hidden = !text; }
+function showError(text) {
+  $('err').textContent = text; $('err').hidden = !text;
+  $('graphErr').textContent = text ? `입력을 확인하십시오: ${text} — 그래프는 마지막으로 계산된 결과입니다.` : ''; $('graphErr').hidden = !text;
+}
 function recompute() {
   try {
     S.R = compute(S.cfg);
@@ -688,6 +745,7 @@ function recompute() {
   } catch (e) { showError(e.message); }
   $('transport').hidden = !(S.good && (S.good.on.wave || S.good.on.heat));
   syncDraft();
+  if (S.ready && S.saved.length) S.draft.dirty = true;   // 설정이 바뀌면 지금 예제는 담은 예제와 달라집니다.
   renderTabs(true);
   persist();
   S.dirty = true;
@@ -699,14 +757,14 @@ function panelKeys() { if (!S.good) return []; const v = viewOf(S.good); return 
 function renderPanels() {
   const keys = panelKeys(), key = keys.join(',');
   for (const el of $$('.concept')) el.classList.toggle('view', !!S.good && el.dataset.id === deepestOf(S.good));
-  $('pinBtn').textContent = S.pin ? '고정 해제' : '고정';
+  $('pinBtn').textContent = S.pin ? '고정 해제' : '고정(비교)';
   $('pinBtn').setAttribute('aria-pressed', !!S.pin);
   if (key === S.panelKey) return;
   S.panelKey = key;
   if (S.zoom && !keys.includes(S.zoom.panel)) S.zoom = null;
   $('panels').style.setProperty('--cols', keys.length);
   $('panels').style.setProperty('--rows', 1);
-  $('panels').innerHTML = keys.map(k => `<section class="pnl" data-panel="${k}"><header><span class="pt"></span><span class="legend"></span></header><div class="cw"><canvas class="main" role="img"></canvas><canvas class="ov" aria-hidden="true"></canvas></div></section>`).join('');
+  $('panels').innerHTML = keys.map(k => `<section class="pnl" data-panel="${k}"><header><span class="pt"></span><span class="legend"></span><span class="badges"></span></header><div class="cw"><canvas class="main" role="img"></canvas><canvas class="ov" aria-hidden="true"></canvas></div></section>`).join('');
 }
 function draw() {
   renderPanels();
@@ -723,6 +781,8 @@ function draw() {
     el.querySelector('.pt').textContent = meta.title;
     const html = legendHtml(meta.legend), lg = el.querySelector('.legend');
     if (lg.innerHTML !== html) lg.innerHTML = html;
+    const badges = `${S.R.view?.x || S.R.view?.y ? '<button type="button" class="badge" data-clearrange title="왼쪽 \'그래프 범위\'에서 정한 범위를 지웁니다">범위 지정됨 ✕</button>' : ''}${S.zoom?.panel === key ? '<button type="button" class="badge" data-unzoom title="확대를 풉니다(더블클릭과 같음)">확대됨 ✕</button>' : ''}`, bg = el.querySelector('.badges');
+    if (bg.innerHTML !== badges) bg.innerHTML = badges;
     canvas.setAttribute('aria-label', meta.title);
     drawOverlay(el);
   }
@@ -788,18 +848,30 @@ function exampleTabHtml() {
       <button type="button" class="x" data-imove="${i}" data-dir="-1" aria-label="위로">↑</button><button type="button" class="x" data-imove="${i}" data-dir="1" aria-label="아래로">↓</button><button type="button" class="x" data-idel="${i}" aria-label="소문항 빼기">×</button></div>
     <textarea class="tf" rows="2" data-ifield="text" data-i="${i}" aria-label="${i + 1}번 문장" placeholder="문장을 쓰십시오. 수식은 $…$">${esc(it.text)}</textarea>
     <div class="item-sol">${it.kind === 'free' ? '' : `<label class="ck small"><input type="checkbox" data-ifield="auto" data-i="${i}" ${it.auto ? 'checked' : ''}>자동 풀이 넣기</label>`}${it.edited && it.kind !== 'free' ? `<button type="button" class="mini" data-irevert="${i}">자동 문장으로</button>` : ''}</div>
+    <div class="warnslot">${itemWarn(it, i)}</div>
     <textarea class="tf" rows="1" data-ifield="note" data-i="${i}" aria-label="${i + 1}번 풀이 메모" placeholder="풀이에 덧붙일 설명 (선택)">${esc(it.note)}</textarea></div>`).join('');
-  const figs = d.figures.map((f, i) => `<div class="figrow"><span>그림 ${i + 1}</span><span class="hint">${esc(conceptOf(f.panel === 'series' && f.cfg.on.half ? 'half' : f.panel)?.title ?? f.panel)}</span>
+  const figs = figuresHtml();
+  return exampleBody(d, kinds, items, figs);
+}
+const SETUP_KEYS = ['f', 'L', 'N', 'params', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X'];
+/** 그림을 담은 뒤 함수나 개념 설정이 바뀌었는지 봅니다(시간, 확대는 그림마다 다를 수 있어 보지 않습니다). */
+const sameSetup = (a, b) => SETUP_KEYS.every(k => JSON.stringify(a?.[k]) === JSON.stringify(b?.[k]));
+/** 문장을 직접 고쳤는데 자동 풀이가 켜져 있으면, 풀이가 설정의 함수 기준이라는 것을 알립니다. */
+const itemWarn = (it, i) => it.edited && it.auto && it.kind !== 'free' ? `<p class="warn">문장을 직접 고쳤습니다. 자동 풀이는 설정의 함수 ${esc(prettyExpr(S.good?.f ?? '', S.good?.params ?? {}))}로 계산합니다. 문장의 함수나 값이 다르면 <button type="button" class="mini" data-autooff="${i}">자동 풀이 끄기</button> 후 풀이 메모를 쓰십시오.</p>` : '';
+function figuresHtml() {
+  return S.draft.figures.map((f, i) => `<div class="figrow"><span>그림 ${i + 1}</span><span class="hint">${esc(conceptOf(f.panel === 'series' && f.cfg.on.half ? 'half' : f.panel)?.title ?? f.panel)}</span>
     <input class="tf" type="text" data-ffield="caption" data-f="${i}" placeholder="그림 설명 (비우면 자동)" value="${esc(f.caption)}">
     <select data-ffield="size" data-f="${i}" aria-label="그림 ${i + 1} 크기">${[['small', '작게'], ['mid', '보통'], ['large', '크게']].map(([v, t]) => `<option value="${v}" ${f.size === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
-    <button type="button" class="x" data-fdel="${i}" aria-label="그림 ${i + 1} 빼기">×</button></div>`).join('');
+    <button type="button" class="x" data-fdel="${i}" aria-label="그림 ${i + 1} 빼기">×</button>${S.good && !sameSetup(f.cfg, S.good) ? `<span class="warn">담은 뒤 설정이 바뀜</span><button type="button" class="mini" data-frecap="${i}">지금 설정으로 다시 담기</button>` : ''}</div>`).join('');
+}
+function exampleBody(d, kinds, items, figs) {
   return `<div class="editor">
     <div class="ed-head"><b>${d.editing === null ? '새 예제' : `예제 ${d.editing + 1} 고치는 중`}</b>
       <select id="addKind" aria-label="소문항 추가"><option value="">+ 소문항 추가</option>${kinds}</select>
       <button type="button" class="btn" id="draftReset">자동 초안으로</button>
       <span class="hint tex">수식은 $…$로 씁니다. 예: $a_n = \\frac{1}{L}\\int_{-L}^{L} f\\cos nx\\,dx$</span></div>
     <div id="items">${items || '<p class="hint">소문항이 없습니다. 위에서 추가하십시오.</p>'}</div>
-    <div class="ed-figs"><b>그림</b> <span class="hint">${d.figures.length ? '' : "그래프 위 '그래프 담기'로 지금 장면을 담습니다. 담지 않으면 켠 개념의 그래프가 자동으로 들어갑니다."}</span>${figs}</div>
+    <div class="ed-figs"><b>그림</b> <span class="hint">${d.figures.length ? '' : "그래프 위 '그래프 담기'로 지금 장면을 담습니다. 담지 않으면 켠 개념의 그래프가 자동으로 들어갑니다."}</span><div id="edFigs">${figs}</div></div>
     <div class="row"><button type="button" class="btn primary" id="saveExample">${d.editing === null ? '이 예제 담기' : `예제 ${d.editing + 1}에 저장`}</button>${d.editing === null ? '' : '<button type="button" class="btn" id="newExample">새 예제 만들기</button>'}</div>
     <h4>미리보기</h4><div class="doc" id="exPreview"></div></div>`;
 }
@@ -815,6 +887,8 @@ function renderExamplePreview() {
 function refreshExample() {
   if ($$('#items .item').length !== S.draft.items.length) { S.lastTab = ''; return renderTabs(true); }
   for (const ta of $$('#items textarea[data-ifield="text"]')) if (document.activeElement !== ta) ta.value = S.draft.items[+ta.dataset.i].text;
+  for (const slot of $$('#items .warnslot')) { const i = +slot.closest('.item').dataset.i, html = itemWarn(S.draft.items[i], i); if (slot.innerHTML !== html) slot.innerHTML = html; }
+  if ($('edFigs') && !$('edFigs').contains(document.activeElement)) { const html = figuresHtml(); if ($('edFigs').innerHTML !== html) $('edFigs').innerHTML = html; }
   renderExamplePreview();
 }
 function renderTabs(all) {
@@ -841,13 +915,41 @@ function saveExample() {
   S.draft = emptyDraft(); syncDraft();
   renderSaved(); rerenderTab(); persist();
 }
+/** 함수와 설정을 처음 상태로 돌립니다. 만든 예제와 고친 설명은 그대로이며, 되돌릴 수 있습니다. */
+function resetAll() {
+  S.undoCfg = copy(S.cfg);
+  S.cfg = copy(DEFAULTS); S.zoom = null; S.pin = null; S.ink = {}; S.marks = {};
+  renderSettings(); recompute();
+  setStatus('함수와 설정을 처음 상태로 돌렸습니다. 만든 예제와 고친 설명은 그대로입니다.', { label: '되돌리기', fn: () => { S.cfg = S.undoCfg; renderSettings(); recompute(); } });
+}
 function editSaved(i) {
   const e = S.saved[i];
   S.cfg = mergeCfg(e.cfg);
-  S.draft = { items: copy(e.items), figures: copy(e.figures), editing: i, custom: true };
+  S.draft = { items: copy(e.items), figures: copy(e.figures), editing: i, custom: true, dirty: false };
   S.tab = 'example';
-  renderSettings(); recompute(); rerenderTab(); renderSaved();
+  renderSettings(); recompute(); S.draft.dirty = false; rerenderTab(); renderSaved();
 }
+
+/* ── 처음 안내와 도움말 ─────────────────────────────── */
+const TOUR = [
+  ['#baseFields', '함수를 입력합니다', '왼쪽 위에 x^2, sin x, |x|처럼 함수를 씁니다. 구간마다 식이 다르면 "구간별"을 고릅니다. 아래 미리보기로 제대로 들어갔는지 확인합니다.'],
+  ['#conceptList', '개념을 고릅니다', '개념은 나무 모양입니다. 체크하면 Fourier 급수에서 그 개념까지 이어진 개념만 켜지고, 그래프가 그 개념으로 바뀝니다. 위쪽 "다음 개념 →"으로 수업 순서대로 진행해도 됩니다.'],
+  ['.tools', '그래프를 살펴봅니다', '그래프 위에 마우스를 올리면 값이 보입니다. Ctrl+휠로 확대, 끌어서 이동, 더블클릭으로 원래대로 돌아갑니다. "고정(비교)"은 지금 결과를 남겨 비교하고, 펜과 점으로 수업 중 표시합니다.'],
+  ['#bottom', '설명과 예제', '아래 탭에서 요약, 개념 설명, 예제 만들기를 봅니다. 예제 만들기에서 문제 문장, 배점, 풀이 메모를 직접 쓰고 "그래프 담기"로 그림을 넣습니다. 가운데 줄을 끌어 이 칸의 높이를 바꿉니다.'],
+  ['#wordBtn', 'Word로 출력합니다', '"이 예제 담기"로 예제를 모은 뒤 "Word로 출력"을 누릅니다. 만든 내용은 자동 저장되며, 다른 PC로 옮길 때는 "예제 모음 저장"을 씁니다. 위쪽 "도움말"에서 언제든 다시 볼 수 있습니다.'],
+];
+const TOUR_KEY = 'lectureStudio.tourDone';
+function showTour(i) {
+  $$('.spot').forEach(el => el.classList.remove('spot'));
+  if (i < 0 || i >= TOUR.length) { $('tour').hidden = true; S.tourStep = -1; if (!S.noSave) try { localStorage.setItem(TOUR_KEY, '1'); } catch { /* 건너뜀 */ } return; }
+  S.tourStep = i;
+  const [sel, title, text] = TOUR[i], target = document.querySelector(sel);
+  target?.classList.add('spot'); target?.scrollIntoView?.({ block: 'nearest' });
+  $('tourStep').textContent = `처음 안내 ${i + 1} / ${TOUR.length}`; $('tourTitle').textContent = title; $('tourText').textContent = text;
+  $('tourPrev').disabled = i === 0; $('tourNext').textContent = i === TOUR.length - 1 ? '시작하기' : '다음';
+  $('tour').hidden = false;
+}
+const tourDone = () => { try { return localStorage.getItem(TOUR_KEY) === '1'; } catch { return true; } };
 
 /* ── 재생 ─────────────────────────────────────────── */
 function setPlaying(on) { S.playing = on; S.last = 0; $('playBtn').setAttribute('aria-pressed', on); $('pauseBtn').setAttribute('aria-pressed', !on && S.cfg.s > 0); }
@@ -870,10 +972,14 @@ document.addEventListener('click', e => {
   if (d.unsave !== undefined) { const i = +d.unsave; S.saved.splice(i, 1); if (draft.editing === i) draft.editing = null; else if (draft.editing > i) draft.editing--; renderSaved(); rerenderTab(); return persist(); }
   if (d.smove !== undefined) { const i = +d.smove; if (move(S.saved, i, +d.dir)) { if (draft.editing === i) draft.editing += +d.dir; else if (draft.editing === i + +d.dir) draft.editing = i; } renderSaved(); return persist(); }
   if (d.edit !== undefined) return editSaved(+d.edit);
-  if (d.imove !== undefined) { move(draft.items, +d.imove, +d.dir); draft.custom = true; rerenderTab(); return persist(); }
-  if (d.idel !== undefined) { draft.items.splice(+d.idel, 1); draft.custom = true; rerenderTab(); return persist(); }
-  if (d.irevert !== undefined) { draft.items[+d.irevert].edited = false; syncDraft(); rerenderTab(); return persist(); }
-  if (d.fdel !== undefined) { draft.figures.splice(+d.fdel, 1); rerenderTab(); return persist(); }
+  if (d.imove !== undefined) { move(draft.items, +d.imove, +d.dir); draft.custom = true; draft.dirty = true; rerenderTab(); return persist(); }
+  if (d.idel !== undefined) { draft.items.splice(+d.idel, 1); draft.custom = true; draft.dirty = true; rerenderTab(); return persist(); }
+  if (d.irevert !== undefined) { draft.items[+d.irevert].edited = false; draft.dirty = true; syncDraft(); rerenderTab(); return persist(); }
+  if (d.fdel !== undefined) { draft.figures.splice(+d.fdel, 1); draft.dirty = true; rerenderTab(); return persist(); }
+  if (d.frecap !== undefined) { const f = draft.figures[+d.frecap]; f.panel = S.good.on[f.panel] ? f.panel : viewOf(S.good); f.cfg = copy({ ...S.good, s: S.cfg.s }); f.zoom = null; draft.dirty = true; rerenderTab(); return persist(); }
+  if (d.autooff !== undefined) { draft.items[+d.autooff].auto = false; draft.dirty = true; rerenderTab(); return persist(); }
+  if (d.clearrange !== undefined) { for (const k of ['xMin', 'xMax', 'yMin', 'yMax']) S.cfg[k] = ''; renderSettings(); return recompute(); }
+  if (d.unzoom !== undefined) { S.zoom = null; S.dirty = true; return undefined; }
   if (d.cedit) { S.editingConcept = d.cedit; S.tab = 'concept'; return rerenderTab(); }
   if (d.csave) { S.edits[d.csave] = $('conceptText').value; S.editingConcept = null; rerenderTab(); setStatus('개념 설명을 저장했습니다. Word 출력에도 이 글이 들어갑니다.'); return persist(); }
   if (d.creset) { delete S.edits[d.creset]; S.editingConcept = null; rerenderTab(); return persist(); }
@@ -884,6 +990,17 @@ document.addEventListener('click', e => {
     renderSettings(); return recompute();
   }
   switch (t.id) {
+    case 'statusAct': { const fn = S.statusAct; $('status').innerHTML = ''; S.statusAct = null; return fn?.(); }
+    case 'choiceAdd': $('exportChoice').hidden = true; saveExample(); return exportWord(true);
+    case 'choiceOnly': return exportWord(true);
+    case 'choiceCancel': $('exportChoice').hidden = true; return undefined;
+    case 'resetBtn': return resetAll();
+    case 'helpBtn': $('help').hidden = false; return $('helpClose').focus();
+    case 'helpClose': $('help').hidden = true; return undefined;
+    case 'tourAgain': $('help').hidden = true; return showTour(0);
+    case 'tourNext': return showTour(S.tourStep + 1 >= TOUR.length ? -1 : S.tourStep + 1);
+    case 'tourPrev': return showTour(Math.max(0, S.tourStep - 1));
+    case 'tourSkip': return showTour(-1);
     case 'addPiece': S.cfg.pieces.splice(S.cfg.pieces.length - 1, 0, { until: 'L/2', expr: '0' }); S.cfg.f = piecesExpr(S.cfg.pieces); renderSettings(); return recompute();
     case 'nextStep': return step(1);
     case 'prevStep': return step(-1);
@@ -894,13 +1011,14 @@ document.addEventListener('click', e => {
       if (!S.good) return undefined;
       const panel = viewOf(S.good);
       draft.figures.push({ panel, cfg: copy({ ...S.good, s: S.cfg.s }), zoom: S.zoom?.panel === panel ? [...S.zoom.xr] : null, caption: '', size: 'mid' });
+      draft.dirty = true;
       setStatus(`그림 ${draft.figures.length}을 예제에 담았습니다. '예제 만들기' 탭에서 설명과 크기를 정합니다.`);
       if (S.tab === 'example') rerenderTab();
       return persist();
     }
     case 'pinBtn': S.pin = S.pin ? null : { cfg: copy(S.good), R: S.R, panel: viewOf(S.good) }; S.panelKey = ''; S.dirty = true; return undefined;
     case 'clearInk': S.ink = {}; S.marks = {}; return redrawOverlays();
-    case 'draftReset': S.draft = { ...emptyDraft(), figures: draft.figures, editing: draft.editing }; syncDraft(); rerenderTab(); return persist();
+    case 'draftReset': S.draft = { ...emptyDraft(), figures: draft.figures, editing: draft.editing, dirty: true }; syncDraft(); rerenderTab(); return persist();
     case 'saveExample': return saveExample();
     case 'newExample': S.draft = emptyDraft(); syncDraft(); rerenderTab(); renderSaved(); return persist();
     case 'wordBtn': return exportWord();
@@ -929,18 +1047,18 @@ document.addEventListener('input', e => {
   else if (d.ifield && t.type !== 'checkbox') {
     const it = S.draft.items[+d.i];
     it[d.ifield] = t.value;
-    if (d.ifield === 'text') it.edited = true;
-    renderExamplePreview(); persist();
-  } else if (d.ffield === 'caption') { S.draft.figures[+d.f].caption = t.value; renderExamplePreview(); persist(); }
+    if (d.ifield === 'text') { it.edited = true; const slot = t.closest('.item')?.querySelector('.warnslot'); if (slot) slot.innerHTML = itemWarn(it, +d.i); }
+    S.draft.dirty = true; renderExamplePreview(); persist();
+  } else if (d.ffield === 'caption') { S.draft.figures[+d.f].caption = t.value; S.draft.dirty = true; renderExamplePreview(); persist(); }
   else if (d.sheet && t.type !== 'checkbox') { S.sheet[d.sheet] = t.value; persist(); }
 });
 document.addEventListener('change', e => {
   const t = e.target, d = t.dataset;
-  if (d.concept) { toggle(d.concept, t.checked); renderSettings(); recompute(); }
-  else if (d.ifield === 'auto') { S.draft.items[+d.i].auto = t.checked; renderExamplePreview(); persist(); }
-  else if (d.ffield === 'size') { S.draft.figures[+d.f].size = t.value; persist(); }
+  if (d.concept) { const before = { ...S.cfg.on }; toggle(d.concept, t.checked); noticeChanges(before, d.concept); renderSettings(); recompute(); }
+  else if (d.ifield === 'auto') { const it = S.draft.items[+d.i]; it.auto = t.checked; S.draft.dirty = true; const slot = t.closest('.item')?.querySelector('.warnslot'); if (slot) slot.innerHTML = itemWarn(it, +d.i); renderExamplePreview(); persist(); }
+  else if (d.ffield === 'size') { S.draft.figures[+d.f].size = t.value; S.draft.dirty = true; persist(); }
   else if (d.sheet) { S.sheet[d.sheet] = t.type === 'checkbox' ? t.checked : t.value; persist(); }
-  else if (t.id === 'addKind' && t.value) { const it = newItem(t.value); S.draft.items.push(it); S.draft.custom = true; syncDraft(); rerenderTab(); persist(); }
+  else if (t.id === 'addKind' && t.value) { const it = newItem(t.value); S.draft.items.push(it); S.draft.custom = true; S.draft.dirty = true; syncDraft(); rerenderTab(); persist(); }
   else if (t.id === 'rateSel') S.rate = +t.value;
   else if (t.id === 'libFile' && t.files[0]) {
     const reader = new FileReader();
@@ -949,12 +1067,16 @@ document.addEventListener('change', e => {
   }
 });
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('help').hidden) { $('help').hidden = true; return; }
+  if (e.key === 'Escape' && !$('tour').hidden) { showTour(-1); return; }
   if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName) && !['range', 'checkbox'].includes(e.target.type)) return;
+  // ←/→로 개념을 넘기는 것은 화면 빈 곳, 그래프, 수업 순서 단추에 있을 때만입니다(체크박스·목록에서 실수로 넘어가지 않게).
+  const nav = e.target === document.body || !!e.target.closest?.('#panels, .flow');
   if (e.key === 'f' || e.key === 'F' || e.key === 'ㄹ') $('presentBtn').click();
   else if (e.key === 'Escape' && document.body.classList.contains('present')) $('presentBtn').click();
   else if (e.key === ' ' && !$('transport').hidden && e.target.tagName !== 'BUTTON') { e.preventDefault(); setPlaying(!S.playing); }
-  else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && e.target.type !== 'range') { e.preventDefault(); step(1); }
-  else if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && e.target.type !== 'range') { e.preventDefault(); step(-1); }
+  else if ((e.key === 'ArrowRight' || e.key === 'PageDown') && nav) { e.preventDefault(); step(1); }
+  else if ((e.key === 'ArrowLeft' || e.key === 'PageUp') && nav) { e.preventDefault(); step(-1); }
 });
 // 고른 목록 위에서 스크롤해도 값이 바뀌지 않게 합니다.
 document.addEventListener('wheel', e => { if (e.target.tagName === 'SELECT' && document.activeElement === e.target) e.target.blur(); }, { passive: true });
@@ -991,11 +1113,23 @@ $('panels').addEventListener('wheel', e => {
   S.dirty = true;
 }, { passive: false });
 $('panels').addEventListener('dblclick', e => { if (e.target.tagName === 'CANVAS' && S.tool === 'view') { S.zoom = null; S.dirty = true; } });
+/* 그래프와 아래 칸 사이의 줄을 끌어 아래 칸의 높이를 바꿉니다. */
+let sizing = null;
+$('resizer').addEventListener('pointerdown', e => { sizing = { y: e.clientY, h: $('bottom').getBoundingClientRect().height }; try { $('resizer').setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 */ } });
+$('resizer').addEventListener('pointermove', e => {
+  if (!sizing) return;
+  const h = Math.max(70, Math.min(window.innerHeight * .75, sizing.h - (e.clientY - sizing.y)));
+  $('bottom').style.maxHeight = `${h}px`; $('bottom').style.height = `${h}px`; S.dirty = true;
+});
+$('resizer').addEventListener('pointerup', () => { sizing = null; });
+$('resizer').addEventListener('dblclick', () => { $('bottom').style.maxHeight = ''; $('bottom').style.height = ''; S.dirty = true; });
 new ResizeObserver(() => { S.dirty = true; }).observe(document.body);
 
 /* ── 자체 검사 ─────────────────────────────────────── */
 window.STUDIO_SELFTEST = () => {
   S.noSave = true;   // 검사가 사용자가 저장한 내용을 덮어쓰지 않게 합니다.
+  S.fakeDownload = true;   // 검사 중에는 파일을 내려받지 않습니다.
+  showTour(-1); $('help').hidden = true;
   const report = { passed: true, checks: [] };
   const check = (ok, label) => { report.checks.push(`${ok ? 'ok' : 'FAIL'} ${label}`); if (!ok) report.passed = false; };
   const near = (a, b, tol) => Math.abs(a - b) <= tol;
@@ -1139,13 +1273,64 @@ window.STUDIO_SELFTEST = () => {
   $('clearInk').click(); check(!S.ink.series && !S.marks.series, '지우기');
   document.querySelector('[data-tool="view"]').click();
   $('presentBtn').click(); check(getComputedStyle($('settings')).display === 'none', '발표 모드는 설정을 숨김'); $('presentBtn').click();
+  // ── 처음 쓰는 사람을 위한 부분 ──
+  // 정확한 값: 격자점에 있는 도약은 정확한 꼴, 격자점에 없는 도약은 근삿값(≈)
+  reset({ f: 'sign(x)' }); check(exact(fineCoef(S.R.series, 'b', 3)).sure && exact(fineCoef(S.R.series, 'b', 3)).text === '4/(3π)', '정확한 값 확인(사각파 b₃)');
+  reset({ f: 'x<1 ? 0 : 1', on: { coef: true } }); tab('example'); check(!exact(fineCoef(S.R.series, 'b', 1)).sure && $('exPreview').textContent.includes('≈') && $('exPreview').textContent.includes('근삿값'), '확인되지 않은 값은 ≈로 표시');
+  // 고친 문장 경고
+  const w0 = document.querySelector('[data-ifield="text"][data-i="0"]'); w0.value = '함수 $f(x) = x^2$의 급수를 구하시오.'; fire(w0, 'input');
+  check(!!document.querySelector('.item[data-i="0"] .warn'), '문장을 고치면 자동 풀이 경고');
+  document.querySelector('[data-autooff="0"]').click(); check(!S.draft.items[0].auto && !document.querySelector('.item[data-i="0"] .warn'), '경고에서 자동 풀이 끄기');
+  // 그림이 옛 설정이면 표시
+  $('captureBtn').click(); rerenderTab(); set({ N: 30 }); refreshExample();
+  check(!!document.querySelector('[data-frecap="0"]'), '그림을 담은 뒤 설정이 바뀌면 표시');
+  document.querySelector('[data-frecap="0"]').click(); check(!document.querySelector('[data-frecap="0"]') && S.draft.figures[0].cfg.N === 30, '지금 설정으로 다시 담기');
+  // 담지 않은 예제가 있으면 출력 전에 묻기
+  saveExample(); set({ N: 12 });
+  check(S.draft.dirty, '담은 뒤 설정을 바꾸면 담지 않은 예제로 봄');
+  $('wordBtn').click(); check(!$('exportChoice').hidden && $('choiceAdd').textContent.includes('담고'), 'Word 출력 전에 담지 않은 예제를 물음');
+  $('choiceAdd').click(); check(S.saved.length === 2 && $('exportChoice').hidden && !!S.lastDownload, '이 예제도 담고 출력');
+  set({ N: 14 }); $('wordBtn').click(); $('choiceOnly').click(); check(S.saved.length === 2 && $('exportChoice').hidden, '담은 예제만 출력');
+  // 처음 상태로와 되돌리기
+  reset({ f: 'x^3' }); $('resetBtn').click(); check(S.cfg.f === DEFAULTS.f && $('status').textContent.includes('처음 상태'), '처음 상태로');
+  $('statusAct').click(); check(S.cfg.f === 'x^3', '되돌리기');
+  // 범위·확대 표시
+  set({ xMin: '-1', xMax: '1' }); draw(); const badge = document.querySelector('[data-clearrange]');
+  check(!!badge, '범위를 정하면 그래프에 표시'); badge.click(); draw(); check(!S.cfg.xMin && !document.querySelector('[data-clearrange]'), '표시를 눌러 범위 지우기');
+  // 개념이 함께 켜지고 꺼질 때 알림
+  reset({}); click('spectrum'); check($('status').textContent.includes('계수의 의미'), '바탕 개념을 함께 켜면 알림');
+  click('gibbs'); check($('status').textContent.includes('다른 갈래'), '다른 갈래를 끄면 알림');
+  // 방향키는 체크박스에서 개념을 넘기지 않음
+  const before2 = deepestOf(S.cfg), box2 = document.querySelector('[data-concept="half"]');
+  box2.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); check(deepestOf(S.cfg) === before2, '체크박스에서 → 키는 개념을 넘기지 않음');
+  // 새 변수 알림, 입력 오류 표시, 손으로 쓰는 표기
+  reset({}); $('f_f').value = 'a*x'; fire($('f_f'), 'input'); check($('status').textContent.includes("'a'") && !!$('p_a'), '새 변수를 만들면 알림');
+  $('f_f').value = 'x²+|x|'; fire($('f_f'), 'input'); check($('err').hidden && near(S.R.f(-2), 6, 1e-12), 'x², |x| 입력');
+  $('f_f').value = 'x+#'; fire($('f_f'), 'input'); check(!$('graphErr').hidden && $('graphErr').textContent.includes('마지막으로 계산된'), '입력 오류를 그래프 위에도 표시');
+  // 처음 안내와 도움말
+  showTour(0); check(!$('tour').hidden && document.querySelector('#baseFields.spot') !== null, '처음 안내 시작');
+  for (let i = 0; i < TOUR.length; i++) $('tourNext').click(); check($('tour').hidden && !$$('.spot').length, '처음 안내 끝');
+  $('helpBtn').click(); check(!$('help').hidden && $('help').textContent.includes('함수 입력'), '도움말 열기');
+  document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); check($('help').hidden, 'Esc로 도움말 닫기');
+  // 저장 알림, 아래 칸 높이 조절
+  window.studioSaved('C:/문서/예제.docx', false); check($('status').textContent.includes('열 프로그램'), 'Word가 없을 때 저장 알림');
+  const rz = $('resizer'), r0 = $('bottom').getBoundingClientRect().height;
+  rz.dispatchEvent(new PointerEvent('pointerdown', { clientY: 500, bubbles: true })); rz.dispatchEvent(new PointerEvent('pointermove', { clientY: 400, bubbles: true })); rz.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  check($('bottom').getBoundingClientRect().height > r0 + 50, '아래 칸 높이 조절');
+  rz.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   // 프로그램 검사는 이 상태로 Word 단추를 누릅니다(예제 1개: 급수·계수 소문항, 자동 그림 2개).
   reset({ on: { coef: true } }); saveExample();
+  S.fakeDownload = false;
   return report;
 };
 
 /* ── 시작 ─────────────────────────────────────────── */
+if (window.innerHeight < 820) size = .95;   // 노트북·프로젝터처럼 낮은 화면은 글자를 조금 줄입니다.
 document.documentElement.style.fontSize = `${16 * size}px`;
-if (!restore()) syncDraft();
+const restored = restore();
+if (!restored) syncDraft();
 renderSettings(); renderSaved(); renderSheet(); recompute();
+S.ready = true; S.draft.dirty = false;
+if (restored) setStatus('지난번 작업을 불러왔습니다.', { label: '처음 상태로', fn: resetAll });
+if (!tourDone()) showTour(0);
 requestAnimationFrame(frame);

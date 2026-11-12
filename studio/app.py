@@ -58,8 +58,10 @@ class StudioWindow(QMainWindow):
         ok = download.state() == QWebEngineDownloadRequest.DownloadState.DownloadCompleted
         if self.doc_finished:
             self.doc_finished(ok, target)
-        elif ok and target.suffix == '.docx':
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+        elif ok:
+            # Word 문서는 엽니다. 열 프로그램이 없으면 저장했다는 것만 알립니다.
+            opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(target))) if target.suffix == '.docx' else True
+            self.page.runJavaScript(f'window.studioSaved?.({json.dumps(str(target))}, {json.dumps(opened)})')
         else:
             QMessageBox.warning(self, '저장 실패', f'{target.name}을 저장하지 못했습니다. 같은 이름의 파일이 다른 프로그램에서 열려 있으면 닫고 다시 시도하십시오.')
 
