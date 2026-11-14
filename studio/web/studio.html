@@ -45,13 +45,15 @@
   </nav>
   <div class="work" id="vizPage">
     <aside id="settings" aria-label="설정">
-      <h3>함수</h3>
+      <h3>문제</h3>
+      <div id="problem"></div>
+      <h3>함수와 값</h3>
       <div id="baseFields"></div>
       <div id="paramFields"></div>
       <p class="err" id="err" role="alert" hidden></p>
-      <h3>개념</h3>
-      <p class="hint">기본 개념에 개념을 하나씩 더하면 교재의 다른 절이 됩니다. 카드 이름을 누르면 그 개념의 그래프가 보입니다.</p>
-      <div id="recipe"></div>
+      <h3>풀이 단계</h3>
+      <p class="hint">단계 이름을 누르면 그 단계의 그래프가 보입니다.</p>
+      <div id="stages"></div>
       <details class="group">
         <summary>그래프 범위</summary>
         <p class="hint">비워 두면 자동입니다. pi, 2L, -L처럼 써도 됩니다.</p>
@@ -74,6 +76,7 @@
         </div>
         <button type="button" class="btn" id="clearInk">지우기</button>
       </div>
+      <nav class="stagebar" id="stageBar" aria-label="풀이 단계"></nav>
       <p class="graph-err" id="graphErr" hidden></p>
       <div id="panels"></div>
       <div id="probe" hidden></div>
@@ -148,7 +151,7 @@
   <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
     <h2 id="helpTitle">도움말</h2>
     <h3>시작하기</h3>
-    <ol><li>맨 위 메뉴 줄의 <b>시각화</b> 화면 왼쪽 위에 함수를 입력합니다. 구간마다 식이 다르면 <b>구간별</b>을 고릅니다.</li><li><b>개념</b>에서 기본 개념(Fourier 급수)에 개념을 더합니다. <b>개념 더하기</b>의 반구간 전개·Fourier 적분·급수 분석(계수의 의미, 계수 크기, 수렴과 도약)·시간 변화(파동·열 방정식과 양 끝 조건)·2차원 막·감쇠를 누르면 카드가 생기고, 그 개념의 설정은 카드 안에 있습니다. × 로 빼고, 카드 이름을 누르면 그 개념의 그래프가 보입니다. 아래에 지금 조합이 교재의 어느 절인지(예: 12장 · 현의 진동) 나오며, 교재에 바로 없는 조합은 '응용 조합'입니다. 함께 바뀐 개념은 상태 줄에 나오고 Ctrl+Z로 되돌립니다.</li><li>그래프 아래 탭에서 요약(그래프 값 표 포함)과 개념 설명을 봅니다. 원하는 장면은 <b>그래프 담기</b>로 예제의 그림으로 넣습니다.</li><li>메뉴 줄의 <b>예제 만들기</b>에서 문제·배점·풀이 메모를 쓰고 <b>이 예제 담기</b>로 모읍니다. <b>출력</b>에서 <b>Word로 출력</b>이나 <b>PDF로 출력</b>을 누릅니다(파일 메뉴에도 있습니다).</li></ol>
+    <ol><li>맨 위 메뉴 줄의 <b>시각화</b> 화면 왼쪽에서 함수를 입력합니다. 구간마다 식이 다르면 <b>구간별</b>을 고릅니다.</li><li><b>문제</b>에서 방정식(없음·파동·열), 영역(주기·구간·직선·직사각형), 양 끝 조건(고정·자유/단열)을 고릅니다. 사인 급수·코사인 급수·적분 중 무엇을 쓰는지는 영역과 양 끝 조건이 정하며, 아래에 교재의 어느 절인지(예: 12장 · 현의 진동) 나옵니다. 함수 칸 이름에는 f(x)의 뜻(초기 변위, 초기 온도 등)과 구간이 나옵니다.</li><li><b>풀이 단계</b>를 따라갑니다. 변수분리와 고유값 문제 → 초기조건의 전개 → 해의 순서로 단계마다 교재 수식과 그래프가 있고, 단계 이름을 누르면 그 단계의 그래프가 보입니다. 전개 단계에서는 부분합·계수의 의미·계수 크기·도약을 골라 봅니다. 문제를 바꾼 것은 Ctrl+Z로 되돌립니다.</li><li>그래프 아래 탭에서 요약(그래프 값 표 포함)과 개념 설명을 봅니다. 원하는 장면은 <b>그래프 담기</b>로 예제의 그림으로 넣습니다.</li><li>메뉴 줄의 <b>예제 만들기</b>에서 문제·배점·풀이 메모를 쓰고 <b>이 예제 담기</b>로 모읍니다. <b>출력</b>에서 <b>Word로 출력</b>이나 <b>PDF로 출력</b>을 누릅니다(파일 메뉴에도 있습니다).</li></ol>
     <h3>함수 입력</h3>
     <table class="help-table"><tr><th>쓰고 싶은 것</th><th>입력</th></tr>
       <tr><td>x 제곱</td><td><code>x^2</code> 또는 <code>x²</code></td></tr><tr><td>절댓값</td><td><code>|x|</code> 또는 <code>abs(x)</code></td></tr>
@@ -178,6 +181,7 @@
 <script src="concepts.js"></script>
 <script src="version.js"></script>
 <script src="symbolic.js"></script>
+<script src="problem.js"></script>
 <script src="core.js"></script>
 <script src="draw.js"></script>
 <script src="content.js"></script>

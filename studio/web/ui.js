@@ -1,59 +1,63 @@
 'use strict';
 /* 화면: 개념 더하기(기본 개념 + 개념 카드), 설정, 그래프 칸, 탭, 안내, 재생, 입력, 시작. */
-/* ── 기본 개념에 개념 더하기 ─────────────────────── */
-/** 개념 이름으로 고릅니다(발표 준비 스크립트·검사용). */
-const CONCEPT_AXES = {
-  series: () => [['time', 'none'], ['rep', 'series'], ['look', 'partial']], coef: () => [['time', 'none'], ['rep', 'series'], ['look', 'coef']],
-  spectrum: () => [['time', 'none'], ['rep', 'series'], ['look', 'spectrum']], gibbs: () => [['time', 'none'], ['rep', 'series'], ['look', 'gibbs']],
-  transform: () => [['time', 'none'], ['rep', 'integral']], half: cfg => [['time', 'none'], ['rep', cfg.halfMode === 'cosine' ? 'cosine' : 'sine'], ['look', 'partial']],
-  wave: () => [['time', 'wave'], ['dim', '1']], membrane: () => [['dim', '2']], heat: () => [['time', 'heat']],
+/* ── 문제 정하기와 풀이 단계 ─────────────────────── */
+/** 개념 이름으로 문제를 정합니다(발표 준비 스크립트·검사용). */
+const CONCEPT_PROBLEM = {
+  series: () => [{ eq: 'none', domain: 'periodic' }, 'partial'], coef: () => [{ eq: 'none', domain: 'periodic' }, 'coef'],
+  spectrum: () => [{ eq: 'none', domain: 'periodic' }, 'spectrum'], gibbs: () => [{ eq: 'none', domain: 'periodic' }, 'gibbs'],
+  transform: () => [{ eq: 'none', domain: 'line' }, 'partial'], half: cfg => [{ eq: 'none', domain: 'interval', left: cfg.halfMode === 'cosine' ? 'free' : 'fixed' }, 'partial'],
+  wave: () => [{ eq: 'wave', domain: 'interval' }], membrane: () => [{ eq: 'wave', domain: 'rect' }], heat: () => [{ eq: 'heat', domain: 'interval' }],
 };
-function select(id) { for (const [k, v] of CONCEPT_AXES[id](S.cfg)) setAxis(S.cfg, k, v); applyAxes(S.cfg); }
-/** 더할 수 있는 개념입니다. has는 이미 더했는지, axis·value는 더할 때 고르는 값입니다. */
-const ADDS = [
-  { id: 'half', label: '반구간 전개', axis: 'rep', value: 'sine', has: v => v.rep.value === 'sine' || v.rep.value === 'cosine' },
-  { id: 'integral', label: 'Fourier 적분', axis: 'rep', value: 'integral', has: v => v.rep.value === 'integral' },
-  { id: 'look', label: '급수 분석', axis: 'look', value: 'coef', has: v => v.look.used && v.look.value !== 'partial' },
-  { id: 'time', label: '시간 변화', axis: 'time', value: 'wave', has: v => v.time.value !== 'none' },
-  { id: 'dim', label: '2차원 막', axis: 'dim', value: '2', has: v => v.dim.used && v.dim.value === '2' },
-  { id: 'damp', label: '감쇠', axis: 'damp', value: 'on', has: v => v.damp.used && v.damp.value === 'on' },
-];
-/** 카드를 빼면 그 축을 기본값으로 돌립니다. */
-const REMOVE = { domain: ['rep', 'series'], look: ['look', 'partial'], time: ['time', 'none'], dim: ['dim', '1'], damp: ['damp', 'off'] };
-const axisSegHtml = (axis, cfg, list, disabled = false) => `<div class="seg" role="group" style="--n:${list.length}">${list.map(([val, text]) => `<button type="button" data-axis="${axis}" data-value="${val}" aria-pressed="${axesView(cfg.axes)[axis].value === val}"${disabled ? ' disabled' : ''}>${text}</button>`).join('')}</div>`;
-/** 더한 개념의 카드입니다(교재의 흐름 순서). 설정(body)은 그래프로 보는 카드에서만 펼치고, 나머지는 한 줄 요약(sum)입니다. */
-function layersOf(cfg) {
-  const ax = cfg.axes, v = axesView(ax), timed = ax.time !== 'none', rep = v.rep.value, out = [], fields = list => list.map(f => fieldHtml(f, cfg)).join('');
-  if (rep === 'integral') out.push({ id: 'domain', title: 'Fourier 적분', ch: '11장', locked: timed, sum: timed ? '무한히 긴 현·막대 (경계가 정함)' : `위끝 a = ${esc(cfg.wMax)}`, body: timed ? '<p class="hint">무한히 긴 현·막대라 급수 대신 적분을 씁니다. 경계에서 정해집니다.</p>' : fields(SUB.transform()) });
-  else if (rep !== 'series') out.push({ id: 'domain', title: '반구간 전개', ch: '11장', locked: timed, sum: `${rep === 'sine' ? '사인 (기함수 확장)' : '코사인 (우함수 확장)'}${timed ? ' · 경계가 정함' : ''}`, body: axisSegHtml('rep', cfg, [['sine', '사인 (기함수 확장)'], ['cosine', '코사인 (우함수 확장)']], timed) + (timed ? '<p class="hint">현·막대의 경계가 정합니다: 고정이면 사인, 자유·단열이면 코사인.</p>' : '') });
-  if (v.look.used && ax.look !== 'partial') out.push({ id: 'look', title: '급수 분석', ch: '11장', sum: `${axisText('look', ax.look)}${cfg.on.coef ? ` · ${cfg.coefKind}${cfg.coefN}` : ''}`, body: axisSegHtml('look', cfg, [['coef', '계수의 의미'], ['spectrum', '계수 크기'], ['gibbs', '수렴과 도약']]) + fields([...(cfg.on.coef ? SUB.coef() : []), ...(cfg.on.gibbs ? SUB.gibbs() : [])]) + (timed ? '<p class="hint">처음 모양 f(x)의 반구간 전개를 분석합니다.</p>' : '') });
-  if (timed) {
-    const heat = ax.time === 'heat';
-    out.push({ id: 'time', title: '시간 변화', ch: '12장', sum: `${axisText('time', ax.time)} · 양 끝 ${{ fixed: heat ? '온도 고정' : '고정', free: heat ? '단열' : '자유', infinite: '무한히 긺' }[ax.bound]}`, body: axisSegHtml('time', cfg, [['wave', '파동 방정식'], ['heat', '열 방정식']]) + `<div class="fld"><span class="flabel">${heat ? '막대의 양 끝' : '현의 양 끝'}</span>${axisSegHtml('bound', cfg, [['fixed', heat ? '온도 고정' : '고정'], ['free', heat ? '단열' : '자유'], ['infinite', '무한히 긺']])}</div>` + fields(heat ? SUB.heat(cfg) : SUB.wave(cfg)) });
-  }
-  if (v.dim.used && ax.dim === '2') out.push({ id: 'dim', title: '2차원 막', ch: '12장', sum: `가로 L × 세로 b = ${esc(cfg.b)}`, body: fields(SUB.membrane()) });
-  if (v.damp.used && ax.damp === 'on') out.push({ id: 'damp', title: '감쇠', ch: '응용', sum: `k = ${esc(cfg.kDamp)}`, body: fields([{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }]) });
-  return out;
+function select(id) { const [p, look] = CONCEPT_PROBLEM[id](S.cfg); Object.assign(S.cfg.prob, p); if (look) S.cfg.look = look; S.cfg.stage = null; applyProblem(S.cfg); }
+const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
+/** 왼쪽 위 '문제': 방정식, 영역, 양 끝 조건, 감쇠, 상수, 교재의 절. */
+function problemHtml(cfg) {
+  const p = cfg.prob, heat = p.eq === 'heat', [ch, name] = recipeOf(cfg), eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
+  let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
+    + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
+  if (p.domain === 'interval') html += segRow('양 끝 (x = 0, x = L)', 'ends', p.eq === 'none' ? [['fixed', '값 0 → 사인 급수'], ['free', '기울기 0 → 코사인 급수']] : heat ? [['fixed', '온도 고정'], ['free', '단열']] : [['fixed', '고정'], ['free', '자유']], p.left);
+  if (p.eq === 'wave' && p.domain === 'interval') html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
+  const consts = [];
+  if (p.eq === 'wave') consts.push({ k: 'c', type: 'text', label: '파동 속도 c' }, ...(p.damp ? [{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }] : []));
+  if (heat) consts.push({ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.domain === 'interval' && p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : []));
+  if (p.domain === 'rect') consts.push({ k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이 a는 L입니다.' });
+  return html + consts.map(f => fieldHtml(f, cfg)).join('') + `<div class="dish" aria-live="polite"><span>${ch ?? '응용'}</span><b>${name}</b></div>`;
 }
-/** 그래프로 보이는 개념 카드입니다. */
-function activeLayer(cfg) {
-  if (cfg.focus && layerView(cfg, cfg.focus)) return cfg.focus;
-  const view = viewOf(cfg);
-  return ['damp', 'dim', 'time', 'domain', 'look'].find(id => layerView(cfg, id) === view) ?? 'base';
+const STAGE_FIELDS = {
+  wMax: { k: 'wMax', type: 'text', label: '적분의 위끝 a', hint: '크게 할수록 f에 가까워집니다. 범위 X 밖은 0으로 봅니다.' },
+  M: { k: 'M', type: 'range', label: '모드 수 (가로·세로 각각)', min: 1, max: 20 },
+};
+/** 전개 단계: 볼 그래프(부분합·계수·계수 크기·도약)와 그 설정. */
+function lookHtml(cfg) {
+  const n = S.R?.series.jumps.length ?? 0, look = cfg.look ?? 'partial';
+  const extra = [...(look === 'coef' || look === 'spectrum' ? [{ k: 'coefKind', type: 'seg', label: '구할 계수', options: [['b', 'bₙ (사인)'], ['a', 'aₙ (코사인)']] }, { k: 'coefN', type: 'range', label: '차수 n', min: 1, max: 20 }] : []),
+    ...(look === 'gibbs' && n > 1 ? [{ k: 'jumpIndex', type: 'range', label: `확대할 도약점 (${n}개 중)`, min: 1, max: n }] : [])];
+  return `<div class="fld"><span class="flabel">그래프로 볼 것</span><div class="seg" role="group" aria-label="그래프로 볼 것" style="--n:2">${LOOKS.map(([v, t]) => `<button type="button" data-look="${v}" aria-pressed="${look === v}">${t}</button>`).join('')}</div></div>${extra.map(f => fieldHtml(f, cfg)).join('')}`;
 }
-function recipeHtml(cfg) {
-  const v = axesView(cfg.axes), [ch, name] = recipeOf(cfg), base = BASES.find(b => b.id === cfg.base) ?? BASES[0], act = activeLayer(cfg);
-  const head = (id, title, tag, removable) => `<div class="lhead"><button type="button" class="lname" data-focus="${id}" aria-pressed="${act === id}" title="이 개념의 그래프와 설정 보기">${title}<small>${tag}</small>${act === id ? '<em>그래프</em>' : ''}</button>${removable ? `<button type="button" class="x" data-remove="${id}" aria-label="${title} 빼기" title="빼기">×</button>` : ''}</div>`;
-  const cards = layersOf(cfg).map(l => `<div class="layer${act === l.id ? ' active' : ''}" data-layer="${l.id}">${head(l.id, `+ ${l.title}`, l.ch, !l.locked)}<div class="lbody">${act === l.id ? l.body : `<span class="lsum">${l.sum}</span>`}</div></div>`).join('');
-  const adds = ADDS.filter(a => !a.has(v)).map(a => `<button type="button" class="add" data-add="${a.id}">+ ${a.label}</button>`).join('');
-  return `<div class="layer base${act === 'base' ? ' active' : ''}" data-layer="base">${head('base', base.title, base.ch, false)}<div class="lbody"><span class="hint">${base.idea}</span></div></div>${cards}`
-    + `<div class="dish" aria-live="polite"><span>${ch ?? '응용 조합'}</span><b>${name}</b></div><div class="adds"><span class="flabel">개념 더하기</span>${adds}</div>`;
+/** 풀이 단계 카드: 번호, 이름, 교재 수식. 그래프로 보는 단계만 설정을 펼칩니다. */
+function stagesHtml(cfg) {
+  const list = stagesOf(cfg), act = stageOf(cfg).id;
+  return list.map((s, i) => {
+    const on = s.id === act, extra = on ? (s.look ? lookHtml(cfg) : '') + (s.fields ?? []).map(k => fieldHtml(STAGE_FIELDS[k], cfg)).join('') : '';
+    return `<div class="layer${on ? ' active' : ''}" data-stage-card="${s.id}"><div class="lhead"><button type="button" class="lname" data-stage="${s.id}" aria-pressed="${on}" title="이 단계의 그래프와 설정 보기"><span class="num">${i + 1}</span>${s.title}${on ? '<em>그래프</em>' : ''}</button></div><div class="lbody"><div class="doc">${blocksHtml(markupBlocks(s.md))}</div>${extra}</div></div>`;
+  }).join('');
 }
-/** 개념을 더하거나 빼거나 바꿉니다. 되돌릴 수 있고, 함께 바뀐 개념은 알림으로 보여 줍니다. */
-function changeConcept(axis, value) {
-  S.undoStack.push({ cfg: copy(S.cfg) }); if (S.undoStack.length > 20) S.undoStack.shift();
-  const note = setAxis(S.cfg, axis, value); applyAxes(S.cfg);
-  if (note) setStatus(note, { label: '되돌리기', fn: undo });
+/** 그래프 위 단계 줄: ① 변수분리 → ② 전개 → ③ 해. 지금 그래프의 단계가 강조되고, 누르면 그 단계로 갑니다. */
+function stageBarHtml(cfg) {
+  const list = stagesOf(cfg), act = stageOf(cfg).id;
+  return `<span class="hint">${esc(recipeText(cfg))}</span>${list.map((s, i) => `${i ? '<span class="arrow" aria-hidden="true">→</span>' : ''}<button type="button" data-stage="${s.id}" aria-pressed="${s.id === act}"><span class="num">${i + 1}</span>${s.title}</button>`).join('')}`;
+}
+const pushUndo = () => { S.undoStack.push({ cfg: copy(S.cfg) }); if (S.undoStack.length > 20) S.undoStack.shift(); };
+/** 문제를 바꿉니다. 맞지 않는 값은 고치고, 영역이나 f(x)의 뜻이 바뀌면 알립니다. 되돌릴 수 있습니다. */
+function changeProblem(key, value) {
+  pushUndo();
+  const p = S.cfg.prob, before = { domain: p.domain, role: roleOf(S.cfg) };
+  if (key === 'ends') p.left = p.right = value; else if (key === 'damp') p.damp = value === 'on'; else p[key] = value;
+  normalizeProblem(p); S.cfg.stage = null; applyProblem(S.cfg);
+  const notes = [], role = roleOf(S.cfg);
+  if (key !== 'domain' && p.domain !== before.domain) notes.push(`영역을 ${domainLabel(p.domain)}(으)로 바꿨습니다.`);
+  if (role !== before.role) notes.push(`입력한 f(x)는 이제 ${role}입니다.`);
+  setStatus(`${notes.join(' ') || `문제: ${recipeText(S.cfg)}`}`, { label: '되돌리기', fn: undo });
   renderSettings(); recompute();
 }
 /* ── 화면 전환: 시각화 / 예제·출력 ─────────────────── */
@@ -94,7 +98,7 @@ function undoable(message, mutate) {
 function undo() {
   const st = S.undoStack.pop();
   if (!st) return setStatus('되돌릴 것이 없습니다.');
-  if (st.cfg) { S.cfg = st.cfg; renderSettings(); recompute(); return setStatus('개념을 되돌렸습니다.'); }
+  if (st.cfg) { S.cfg = st.cfg; renderSettings(); recompute(); return setStatus('문제를 되돌렸습니다.'); }
   S.saved = st.saved; S.draft = st.draft; S.edits = st.edits;
   renderSaved(); rerenderTab(); persist();
   return setStatus('되돌렸습니다.');
@@ -102,16 +106,6 @@ function undo() {
 
 /* ── 설정 화면 ─────────────────────────────────────── */
 const hintOf = cfg => halfDomain(cfg) ? '(0, L)에서의 함수. 예: x*(L-x), sin(pi*x/L), sin x' : '예: x^2, sign(x), abs(x), 2 sin x + 1';
-const SUB = {
-  coef: () => [{ k: 'coefKind', type: 'seg', label: '구할 계수', options: [['b', 'bₙ (사인)'], ['a', 'aₙ (코사인)']] }, { k: 'coefN', type: 'range', label: '차수 n', min: 1, max: 20 }],
-  gibbs: () => { const n = S.R?.series.jumps.length ?? 0; return n > 1 ? [{ k: 'jumpIndex', type: 'range', label: `확대할 도약점 (${n}개 중)`, min: 1, max: n }] : []; },
-  transform: () => [{ k: 'wMax', type: 'text', label: '적분의 위끝 a', hint: '크게 할수록 f에 가까워집니다. 범위 X 밖은 0으로 봅니다.' }],
-  wave: cfg => [{ k: 'g', type: 'text', label: '초기 속도 g(x)', hint: '0이면 정지 상태에서 시작합니다.' }, { k: 'c', type: 'text', label: '파동 속도 c' },
-  ],
-  membrane: () => [{ k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이는 L입니다.' }, { k: 'h', type: 'text', label: '처음 모양의 y 방향 h(y)', hint: '처음 모양은 f(x)·h(y)입니다. y와 b로 씁니다.' }, { k: 'M', type: 'range', label: '모드 수 (가로·세로 각각)', min: 1, max: 20 }],
-  heat: cfg => [{ k: 'alpha', type: 'text', label: '열확산계수 c²', hint: '열방정식 u_t = c² u_xx의 c² 값' },
-    ...(cfg.heatDomain === 'finite' && cfg.bc === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도' }] : [])],
-};
 function fieldHtml(field, cfg) {
   const { k, label, hint } = field, id = `f_${k}`;
   if (field.type === 'seg') return `<div class="fld"><span class="flabel">${label}</span><div class="seg" style="--n:${field.options.length}">${field.options.map(([value, text]) => `<button type="button" data-seg="${k}" data-value="${value}" aria-pressed="${cfg[k] === value}">${text}</button>`).join('')}</div></div>`;
@@ -133,7 +127,7 @@ function renderPreview() {
   try { compile(S.cfg.f); el.innerHTML = previewHtml(S.cfg); } catch { el.innerHTML = '<span class="hint">식을 다 입력하면 여기에 보입니다.</span>'; }
 }
 function fHtml(cfg) {
-  const mode = fieldHtml({ k: 'fMode', type: 'seg', label: '함수 f(x)', options: [['single', '식 하나'], ['pieces', '구간별']] }, cfg);
+  const mode = fieldHtml({ k: 'fMode', type: 'seg', label: esc(roleOf(cfg)), options: [['single', '식 하나'], ['pieces', '구간별']] }, cfg);
   if (cfg.fMode !== 'pieces') return `${mode}<div class="fld"><input class="tf" id="f_f" type="text" spellcheck="false" autocomplete="off" data-field="f" aria-label="함수 f(x)" value="${esc(cfg.f)}"><span class="hint">${esc(hintOf(cfg))}</span></div><div class="preview" id="fPreview"></div>`;
   const last = cfg.pieces.length - 1;
   const rows = cfg.pieces.map((p, i) => i < last
@@ -142,10 +136,17 @@ function fHtml(cfg) {
   return `${mode}<div class="fld"><span class="hint">구간 ${halfDomain(cfg) ? '0' : '−L'} ~ L을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
 }
 function renderSettings() {
-  const cfg = S.cfg, base = [{ k: 'L', type: 'text', label: halfDomain(cfg) ? '길이 L' : '반주기 L (주기의 절반)', hint: halfDomain(cfg) ? 'pi, 2, 1/2처럼 씁니다.' : 'pi, 2, 1/2처럼 씁니다. 주기가 2π이면 pi' }, { k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }, ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '무한 영역에서 보이는 범위 X' }] : [])];
-  $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml(f, cfg)).join('');
+  const cfg = S.cfg, p = cfg.prob, base = [
+    ...(p.domain !== 'line' ? [{ k: 'L', type: 'text', label: p.domain === 'periodic' ? '반주기 L (주기 2L)' : p.domain === 'rect' ? '막의 가로 길이 a = L' : '길이 L', hint: 'pi, 2, 1/2처럼 씁니다.' }] : []),
+    ...(p.eq === 'wave' ? [{ k: 'g', type: 'text', label: '초기 속도 g(x) = uₜ(x, 0)', hint: '0이면 정지 상태에서 시작합니다.' }] : []),
+    ...(p.domain === 'rect' ? [{ k: 'h', type: 'text', label: '처음 모양의 y 방향 h(y), 0 < y < b', hint: '처음 모양은 f(x)·h(y)입니다. y와 b로 씁니다.' }] : []),
+    ...(p.domain !== 'line' ? [{ k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }] : []),
+    ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '보이는 범위 X (−X < x < X)' }] : [])];
+  $('problem').innerHTML = problemHtml(cfg);
+  $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml({ ...f, label: esc(f.label) }, cfg)).join('');
   renderPreview();
-  $('recipe').innerHTML = recipeHtml(cfg);
+  $('stages').innerHTML = stagesHtml(cfg);
+  $('stageBar').innerHTML = stageBarHtml(cfg);
   for (const k of ['xMin', 'xMax', 'yMin', 'yMax', 'tEndWave', 'tEndHeat']) if (document.activeElement !== $(`f_${k}`)) $(`f_${k}`).value = cfg[k] ?? '';
   renderParams(true);
 }
@@ -179,7 +180,7 @@ function showError(text) {
   $('graphErr').textContent = text ? `입력을 확인하십시오: ${text} — 그래프는 마지막으로 계산된 결과입니다.` : ''; $('graphErr').hidden = !text;
 }
 function recompute() {
-  applyAxes(S.cfg);
+  applyProblem(S.cfg);
   try {
     S.R = compute(S.cfg);
     S.good = copy(S.cfg);   // 입력이 잘못되면 그래프는 마지막으로 계산된 설정으로 그립니다.
@@ -299,13 +300,13 @@ function exampleTabHtml() {
   const figs = figuresHtml();
   return exampleBody(d, kinds, items, figs);
 }
-const SETUP_KEYS = ['f', 'L', 'N', 'params', 'axes', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M'];
+const SETUP_KEYS = ['f', 'L', 'N', 'params', 'prob', 'look', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M'];
 /** 그림을 담은 뒤 함수나 개념 설정이 바뀌었는지 봅니다(시간, 확대는 그림마다 다를 수 있어 보지 않습니다). */
 const sameSetup = (a, b) => SETUP_KEYS.every(k => JSON.stringify(a?.[k]) === JSON.stringify(b?.[k]));
 /** 문장을 직접 고쳤는데 자동 풀이가 켜져 있으면, 풀이가 설정의 함수 기준이라는 것을 알립니다. */
 const itemWarn = (it, i) => it.edited && it.auto && it.kind !== 'free' ? `<p class="warn">문장을 직접 고쳤습니다. 자동 풀이는 설정의 함수 ${esc(prettyExpr(S.good?.f ?? '', S.good?.params ?? {}))}로 계산합니다. 문장의 함수나 값이 다르면 <button type="button" class="mini" data-autooff="${i}">자동 풀이 끄기</button> 후 풀이 메모를 쓰십시오.</p>` : '';
 function figuresHtml() {
-  return S.draft.figures.map((f, i) => `<div class="figrow"><span>그림 ${i + 1}</span><span class="hint">${esc(conceptOf(f.panel === 'series' && f.cfg.on.half ? 'half' : f.panel)?.title ?? f.panel)}</span>
+  return S.draft.figures.map((f, i) => `<div class="figrow"><span>그림 ${i + 1}</span><span class="hint">${esc(f.panel === 'eigen' ? '고유함수' : conceptOf(f.panel === 'series' && f.cfg.on.half ? 'half' : f.panel)?.title ?? f.panel)}</span>
     <input class="tf" type="text" data-ffield="caption" data-f="${i}" placeholder="그림 설명 (비우면 자동)" value="${esc(f.caption)}">
     <select data-ffield="size" data-f="${i}" aria-label="그림 ${i + 1} 크기">${[['small', '작게'], ['mid', '보통'], ['large', '크게']].map(([v, t]) => `<option value="${v}" ${f.size === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <button type="button" class="x" data-fdel="${i}" aria-label="그림 ${i + 1} 빼기">×</button>${S.good && !sameSetup(f.cfg, S.good) ? `<span class="warn">담은 뒤 설정이 바뀜</span><button type="button" class="mini" data-frecap="${i}">지금 설정으로 다시 담기</button>` : ''}</div>`).join('');
@@ -391,8 +392,9 @@ function editSaved(i) {
 
 /* ── 처음 안내와 도움말 ─────────────────────────────── */
 const TOUR = [
-  ['#baseFields', '함수를 입력합니다', '왼쪽 위에 x^2, sin x, |x|처럼 함수를 씁니다. 구간마다 식이 다르면 "구간별"을 고릅니다. 아래 미리보기로 제대로 들어갔는지 확인합니다.'],
-  ['#recipe', '개념을 더합니다', '기본 개념은 Fourier 급수입니다. "개념 더하기"에서 반구간 전개, 급수 분석, 시간 변화(파동·열), 2차원 막, 감쇠를 하나씩 더하면 교재의 다른 절이 됩니다(예: + 시간 변화 = 12장 · 현의 진동). 더한 개념의 설정은 그 카드 안에 있고, × 로 뺍니다. 카드 이름을 누르면 그 개념의 그래프가 보입니다. 함께 바뀐 개념은 알림으로 알려 주며 Ctrl+Z로 되돌립니다.'],
+  ['#problem', '문제를 정합니다', '방정식(없음·파동·열), 영역, 양 끝 조건을 고릅니다. 아래에 교재의 어느 절인지 나옵니다. 사인 급수인지 코사인 급수인지, 급수인지 적분인지는 고르지 않습니다. 영역과 양 끝 조건이 정합니다.'],
+  ['#baseFields', '함수를 입력합니다', 'x^2, sin x, |x|처럼 씁니다. 칸 이름에 이 함수의 뜻(초기 변위, 초기 온도 등)과 구간이 나옵니다. 구간마다 식이 다르면 "구간별"을 고릅니다. 아래 미리보기로 제대로 들어갔는지 확인합니다.'],
+  ['#stages', '풀이 단계를 따라갑니다', '변수분리와 고유값 문제 → 초기조건의 전개 → 해의 순서로, 단계마다 교재 수식과 그래프가 있습니다. 단계 이름을 누르면 그 단계의 그래프가 보입니다. 전개 단계에서는 부분합·계수의 의미·계수 크기·도약을 골라 봅니다. 문제를 바꾼 것은 Ctrl+Z로 되돌립니다.'],
   ['.tools', '그래프를 살펴봅니다', '그래프 위에 마우스를 올리면 값이 보입니다. Ctrl+휠로 확대, 끌어서 이동, 더블클릭으로 원래대로 돌아갑니다. 그래프를 누른 뒤 키보드(←→ 값 읽기, +/− 확대, Enter 점)로도 다룹니다. "고정(비교)"은 지금 결과를 남겨 비교하고, "그래프 담기"는 이 장면을 예제의 그림으로 넣습니다.'],
   ['#bottom', '요약과 개념 설명', '아래 탭에서 요약(그래프 값 표 포함)과 개념 설명을 봅니다. 개념 설명은 "고치기"로 바꿀 수 있습니다. 가운데 줄을 끌어 이 칸의 높이를 바꿉니다.'],
   ['#menubar', '메뉴 줄', '맨 위 메뉴 줄의 "예제 만들기"에서 문제 문장, 배점, 풀이 메모를 쓰고 예제를 모읍니다. "출력"에서 Word나 PDF로 내보냅니다. 파일·편집·보기·도움말 메뉴에 예제 모음 열기·저장, 되돌리기(Ctrl+Z), 발표 모드, 글자 크기, 도움말이 있습니다. 만든 내용은 자동 저장됩니다.'],
@@ -427,10 +429,9 @@ document.addEventListener('click', e => {
   if (!t) return;
   const d = t.dataset, draft = S.draft;
   if (d.seg) { setSeg(d.seg, d.value); renderSettings(); return recompute(); }
-  if (d.axis) return changeConcept(d.axis, d.value);
-  if (d.add) { const a = ADDS.find(x => x.id === d.add); return changeConcept(a.axis, a.value); }
-  if (d.remove) return changeConcept(...REMOVE[d.remove]);
-  if (d.focus) { S.cfg.focus = d.focus === 'base' ? 'base' : d.focus; renderSettings(); return recompute(); }
+  if (d.prob) return changeProblem(d.prob, d.value);
+  if (d.look) { pushUndo(); S.cfg.look = d.look; S.cfg.stage = 'expand'; applyProblem(S.cfg); renderSettings(); return recompute(); }
+  if (d.stage) { S.cfg.stage = d.stage; renderSettings(); return recompute(); }
   if (t.classList.contains('menu-top')) return openMenu(t.getAttribute('aria-expanded') === 'true' ? null : t);
   if (t.closest('.menu-list')) closeMenus();
   if (d.click) return $(d.click).click();

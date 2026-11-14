@@ -52,7 +52,7 @@ const KINDS = {
 };
 const newItem = kind => ({ kind, text: '', edited: false, auto: kind !== 'free', note: '', points: '' });
 const autoItems = cfg => ['series', ...['coef', 'spectrum', 'gibbs', 'transform', 'wave', 'membrane', 'heat'].filter(k => cfg.on[k])].map(newItem);
-const missing = kind => { const c = KINDS[kind].concept; return `(이 소문항에 필요한 개념 '${conceptOf(c).title}'이 꺼져 있습니다. 개념을 더하거나 문장을 직접 쓰십시오.)`; };
+const missing = kind => { const c = KINDS[kind].concept; return `(이 소문항에 필요한 개념 '${conceptOf(c).title}'이 꺼져 있습니다. 문제나 전개 단계의 그래프를 바꾸거나 문장을 직접 쓰십시오.)`; };
 const symMarkup = model => model.sym === 'odd' ? '기함수이므로 $a_n = 0$인 사인 급수입니다.' : model.sym === 'even' ? '우함수이므로 $b_n = 0$인 코사인 급수입니다.' : '대칭이 없어 사인 항과 코사인 항이 모두 나옵니다.';
 const firstNonzero = (get, count, tol) => { const out = []; for (let n = 1; n <= NMAX && out.length < count; n++) if (Math.abs(get(n)) >= tol) out.push(n); return out; };
 const valueEq = (name, pairs) => `$$${pairs.map(([n, v]) => { const e = exact(v); return `${name}_{${n}} ${rel(e)} ${e.text}`; }).join(',\\quad ')},\\ \\ldots$$`;

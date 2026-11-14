@@ -2,8 +2,8 @@
 /* 저장(자동·예제 모음 파일)과 Word 출력. */
 /* ── 저장: 프로그램 안(자동)과 파일(예제 모음) ───────── */
 const STORE = 'lectureStudio.v1';
-/** 저장할 때는 축(axes)만 남기고, 축에서 만들어지는 값은 지웁니다. 읽을 때 mergeCfg가 다시 만듭니다. */
-const DERIVED = ['on', 'halfMode', 'waveDomain', 'waveEnds', 'heatDomain', 'bc', 'damping'];
+/** 저장할 때는 문제(prob)만 남기고, 문제에서 만들어지는 값과 예전 키는 지웁니다. 읽을 때 mergeCfg가 다시 만듭니다. */
+const DERIVED = ['on', 'halfMode', 'waveDomain', 'waveEnds', 'heatDomain', 'bc', 'damping', 'axes', 'focus', 'base'];
 const storedCfg = cfg => { const c = copy(cfg); for (const k of DERIVED) delete c[k]; return c; };
 const storedExample = e => ({ ...e, ...(e.cfg ? { cfg: storedCfg(e.cfg) } : {}), figures: (e.figures ?? []).map(f => ({ ...f, cfg: storedCfg(f.cfg) })) });
 const stateData = () => ({ v: 1, cfg: storedCfg(S.cfg), draft: storedExample(S.draft), saved: S.saved.map(storedExample), edits: S.edits, sheet: S.sheet });

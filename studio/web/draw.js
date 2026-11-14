@@ -100,6 +100,18 @@ const PANELS = {
     return { title: `도약점 x = ${piLabel(J.x, model.L)} 확대`, frame: { b, xr, yr }, legend: [['--ink', fx], ['--blue', `<i>S</i><sub>${cfg.N}</sub>`], ['--hot', '두 극한의 평균'], ...(ref ? [pinLabel(`<i>S</i><sub>${ref.cfg.N}</sub>`)] : [])],
       probe: x => [['f', model.f(x)], [`S${cfg.N}`, partialSum(model, cfg.N, x)]] };
   },
+  eigen(ctx, w, h, C, cfg, R) {
+    const p = cfg.prob ?? { domain: 'periodic', left: 'fixed' }, L = R.L, b = box(w, h, C), periodic = p.domain === 'periodic', k = n => n * PI / L;
+    const name = (fn, n) => `${fn}(${n > 1 ? n : ''}π<i>x</i>/<i>L</i>)`;
+    const fns = periodic ? [[name('cos', 1), x => Math.cos(k(1) * x)], [name('sin', 1), x => Math.sin(k(1) * x)], [name('cos', 2), x => Math.cos(k(2) * x)], [name('sin', 2), x => Math.sin(k(2) * x)]]
+      : p.left === 'fixed' ? [1, 2, 3, 4].map(n => [name('sin', n), x => Math.sin(k(n) * x)]) : [0, 1, 2, 3].map(n => [n ? name('cos', n) : '1', x => Math.cos(k(n) * x)]);
+    const xr = rangeX(periodic ? [-L, L] : [0, L], R), yr = rangeY([-1.35, 1.35], R), M = axes(ctx, b, xr, yr, C, { xTicks: piTicks(xr, L) });
+    const colors = [C.blue, C.hot, C.green, C.muted], vars = ['--blue', '--hot', '--green', '--muted'];
+    fns.forEach(([, fn], i) => curve(ctx, fn, b, xr, M, colors[i], i ? 2 : 3));
+    if (!periodic && p.left === 'fixed') for (const x0 of [0, L]) dot(ctx, M.X(x0), M.Y(0), C.ink, C, 5);
+    const title = periodic ? '기저 함수 (한 주기에서 직교)' : p.domain === 'rect' ? 'x 방향 고유함수 (가장자리 고정)' : p.left === 'fixed' ? '고유함수: 양 끝에서 값이 0 (고정)' : '고유함수: 양 끝에서 기울기 0 (자유·단열)';
+    return { title, frame: { b, xr, yr }, legend: fns.map(([n], i) => [vars[i], n]), probe: x => fns.map(([n, fn]) => [n.replace(/<[^>]+>/g, ''), fn(x)]) };
+  },
   transform(ctx, w, h, C, cfg, R, ref) {
     const T = R.transform, [p, q] = stacked(w, h, C, .55), xr = rangeX([-T.X, T.X], R), yr = rangeY(T.yr, R);
     const M = axes(ctx, p, xr, yr, C, {});
@@ -191,14 +203,9 @@ function markPoint(f, m) {
 }
 /** 체크한 개념 중 그래프가 있는 것입니다(그림을 담지 않은 예제의 Word 그림). */
 const panelIds = cfg => ['series', 'coef', 'spectrum', 'gibbs', 'transform', 'wave', 'membrane', 'heat'].filter(id => cfg.on[id]);
-const TIME_VIEW = cfg => cfg.on.membrane ? 'membrane' : cfg.on.wave ? 'wave' : cfg.on.heat ? 'heat' : null;
-const LOOK_VIEW = cfg => ['gibbs', 'spectrum', 'coef'].find(k => cfg.on[k]) ?? null;
-/** 개념 카드마다 보여 줄 그래프입니다. 카드가 없으면 null입니다. */
-const layerView = (cfg, id) => ({ base: 'series', domain: cfg.on.transform ? 'transform' : cfg.on.half ? 'series' : null, look: LOOK_VIEW(cfg), time: TIME_VIEW(cfg),
-  dim: cfg.on.membrane ? 'membrane' : null, damp: cfg.on.wave && cfg.axes?.damp === 'on' && cfg.waveDomain === 'finite' && !cfg.on.membrane ? 'wave' : null })[id] ?? null;
-/** 화면의 그래프: 고른 개념 카드(cfg.focus)의 그래프이고, 고르지 않았으면 시간 변화, 적분, 급수 분석, 급수 순서입니다. */
-const viewOf = cfg => (cfg.focus && layerView(cfg, cfg.focus)) || TIME_VIEW(cfg) || (cfg.on.transform ? 'transform' : null) || LOOK_VIEW(cfg) || 'series';
+/** 화면의 그래프: 고른 풀이 단계(없으면 마지막 단계)의 그래프입니다. */
+const viewOf = cfg => cfg.prob ? stageOf(cfg).panel : 'series';
 /** 지금 그래프에 해당하는 개념 설명입니다. */
-const deepestOf = cfg => { const v = viewOf(cfg); return v === 'series' && cfg.on.half ? 'half' : v; };
+const deepestOf = cfg => { const v = viewOf(cfg); return (v === 'series' || v === 'eigen') && cfg.on.half ? 'half' : v === 'eigen' ? 'series' : v; };
 const conceptOf = id => CONCEPTS.find(c => c.id === id);
 function legendHtml(items) { return items.map(([c, t, kind]) => `<span><b class="sw ${kind === true ? 'dashed' : kind || ''}" style="--c:var(${c})"></b><span class="lt">${t}</span></span>`).join(''); }
