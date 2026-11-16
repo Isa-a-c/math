@@ -10,18 +10,14 @@ const CONCEPT_PROBLEM = {
 };
 function select(id) { const [p, look] = CONCEPT_PROBLEM[id](S.cfg); Object.assign(S.cfg.prob, p); if (look) S.cfg.look = look; S.cfg.stage = null; applyProblem(S.cfg); }
 const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
-/** 왼쪽 위 '문제': 방정식, 영역, 양 끝 조건, 감쇠, 상수, 교재의 절. */
+/** 왼쪽 위 '문제': 고르는 것만(방정식, 영역, 양 끝 조건, 감쇠). 상수는 '함수와 값', 교재의 절은 그래프 위 단계 줄에 있습니다. */
 function problemHtml(cfg) {
-  const p = cfg.prob, heat = p.eq === 'heat', [ch, name] = recipeOf(cfg), eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
+  const p = cfg.prob, heat = p.eq === 'heat', eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
   let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
     + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
   if (p.domain === 'interval') html += segRow('양 끝 (x = 0, x = L)', 'ends', p.eq === 'none' ? [['fixed', '값 0 → 사인 급수'], ['free', '기울기 0 → 코사인 급수']] : heat ? [['fixed', '온도 고정'], ['free', '단열']] : [['fixed', '고정'], ['free', '자유']], p.left);
   if (p.eq === 'wave' && p.domain === 'interval') html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
-  const consts = [];
-  if (p.eq === 'wave') consts.push({ k: 'c', type: 'text', label: '파동 속도 c' }, ...(p.damp ? [{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }] : []));
-  if (heat) consts.push({ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.domain === 'interval' && p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : []));
-  if (p.domain === 'rect') consts.push({ k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이 a는 L입니다.' });
-  return html + consts.map(f => fieldHtml(f, cfg)).join('') + `<div class="dish" aria-live="polite"><span>${ch ?? '응용'}</span><b>${name}</b></div>`;
+  return html;
 }
 const STAGE_FIELDS = {
   wMax: { k: 'wMax', type: 'text', label: '적분의 위끝 a', hint: '크게 할수록 f에 가까워집니다. 범위 X 밖은 0으로 봅니다.' },
@@ -32,15 +28,12 @@ function lookHtml(cfg) {
   const n = S.R?.series.jumps.length ?? 0, look = cfg.look ?? 'partial';
   const extra = [...(look === 'coef' || look === 'spectrum' ? [{ k: 'coefKind', type: 'seg', label: '구할 계수', options: [['b', 'bₙ (사인)'], ['a', 'aₙ (코사인)']] }, { k: 'coefN', type: 'range', label: '차수 n', min: 1, max: 20 }] : []),
     ...(look === 'gibbs' && n > 1 ? [{ k: 'jumpIndex', type: 'range', label: `확대할 도약점 (${n}개 중)`, min: 1, max: n }] : [])];
-  return `<div class="fld"><span class="flabel">그래프로 볼 것</span><div class="seg" role="group" aria-label="그래프로 볼 것" style="--n:2">${LOOKS.map(([v, t]) => `<button type="button" data-look="${v}" aria-pressed="${look === v}">${t}</button>`).join('')}</div></div>${extra.map(f => fieldHtml(f, cfg)).join('')}`;
+  return `<div class="fld"><span class="flabel">그래프로 볼 것</span><div class="seg" role="group" aria-label="그래프로 볼 것" style="--n:4">${LOOKS.map(([v, t]) => `<button type="button" data-look="${v}" aria-pressed="${look === v}">${t}</button>`).join('')}</div></div>${extra.map(f => fieldHtml(f, cfg)).join('')}`;
 }
-/** 풀이 단계 카드: 번호, 이름, 교재 수식. 그래프로 보는 단계만 설정을 펼칩니다. */
-function stagesHtml(cfg) {
-  const list = stagesOf(cfg), act = stageOf(cfg).id;
-  return list.map((s, i) => {
-    const on = s.id === act, extra = on ? (s.look ? lookHtml(cfg) : '') + (s.fields ?? []).map(k => fieldHtml(STAGE_FIELDS[k], cfg)).join('') : '';
-    return `<div class="layer${on ? ' active' : ''}" data-stage-card="${s.id}"><div class="lhead"><button type="button" class="lname" data-stage="${s.id}" aria-pressed="${on}" title="이 단계의 그래프와 설정 보기"><span class="num">${i + 1}</span>${s.title}${on ? '<em>그래프</em>' : ''}</button></div><div class="lbody"><div class="doc">${blocksHtml(markupBlocks(s.md))}</div>${extra}</div></div>`;
-  }).join('');
+/** 단계 줄 아래: 지금 단계의 교재 수식(크게)과 그 단계의 설정. */
+function stageBoxHtml(cfg) {
+  const s = stageOf(cfg), extra = (s.look ? lookHtml(cfg) : '') + (s.fields ?? []).map(k => fieldHtml(STAGE_FIELDS[k], cfg)).join('');
+  return `<div class="doc formula">${blocksHtml(markupBlocks(s.md))}</div>${extra ? `<div class="stage-set">${extra}</div>` : ''}`;
 }
 /** 그래프 위 단계 줄: ① 변수분리 → ② 전개 → ③ 해. 지금 그래프의 단계가 강조되고, 누르면 그 단계로 갑니다. */
 function stageBarHtml(cfg) {
@@ -136,7 +129,10 @@ function fHtml(cfg) {
   return `${mode}<div class="fld"><span class="hint">구간 ${halfDomain(cfg) ? '0' : '−L'} ~ L을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
 }
 function renderSettings() {
-  const cfg = S.cfg, p = cfg.prob, base = [
+  const cfg = S.cfg, p = cfg.prob, heat = p.eq === 'heat', base = [
+    ...(p.eq === 'wave' ? [{ k: 'c', type: 'text', label: '파동 속도 c' }, ...(p.damp ? [{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }] : [])] : []),
+    ...(heat ? [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.domain === 'interval' && p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : [])] : []),
+    ...(p.domain === 'rect' ? [{ k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이 a는 L입니다.' }] : []),
     ...(p.domain !== 'line' ? [{ k: 'L', type: 'text', label: p.domain === 'periodic' ? '반주기 L (주기 2L)' : p.domain === 'rect' ? '막의 가로 길이 a = L' : '길이 L', hint: 'pi, 2, 1/2처럼 씁니다.' }] : []),
     ...(p.eq === 'wave' ? [{ k: 'g', type: 'text', label: '초기 속도 g(x) = uₜ(x, 0)', hint: '0이면 정지 상태에서 시작합니다.' }] : []),
     ...(p.domain === 'rect' ? [{ k: 'h', type: 'text', label: '처음 모양의 y 방향 h(y), 0 < y < b', hint: '처음 모양은 f(x)·h(y)입니다. y와 b로 씁니다.' }] : []),
@@ -145,8 +141,8 @@ function renderSettings() {
   $('problem').innerHTML = problemHtml(cfg);
   $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml({ ...f, label: esc(f.label) }, cfg)).join('');
   renderPreview();
-  $('stages').innerHTML = stagesHtml(cfg);
   $('stageBar').innerHTML = stageBarHtml(cfg);
+  $('stageBox').innerHTML = stageBoxHtml(cfg);
   for (const k of ['xMin', 'xMax', 'yMin', 'yMax', 'tEndWave', 'tEndHeat']) if (document.activeElement !== $(`f_${k}`)) $(`f_${k}`).value = cfg[k] ?? '';
   renderParams(true);
 }
@@ -394,7 +390,7 @@ function editSaved(i) {
 const TOUR = [
   ['#problem', '문제를 정합니다', '방정식(없음·파동·열), 영역, 양 끝 조건을 고릅니다. 아래에 교재의 어느 절인지 나옵니다. 사인 급수인지 코사인 급수인지, 급수인지 적분인지는 고르지 않습니다. 영역과 양 끝 조건이 정합니다.'],
   ['#baseFields', '함수를 입력합니다', 'x^2, sin x, |x|처럼 씁니다. 칸 이름에 이 함수의 뜻(초기 변위, 초기 온도 등)과 구간이 나옵니다. 구간마다 식이 다르면 "구간별"을 고릅니다. 아래 미리보기로 제대로 들어갔는지 확인합니다.'],
-  ['#stages', '풀이 단계를 따라갑니다', '변수분리와 고유값 문제 → 초기조건의 전개 → 해의 순서로, 단계마다 교재 수식과 그래프가 있습니다. 단계 이름을 누르면 그 단계의 그래프가 보입니다. 전개 단계에서는 부분합·계수의 의미·계수 크기·도약을 골라 봅니다. 문제를 바꾼 것은 Ctrl+Z로 되돌립니다.'],
+  ['#stageBar', '풀이 단계를 따라갑니다', '그래프 위 줄에 교재의 절과 풀이 단계(변수분리와 고유값 문제 → 전개 → 해)가 있습니다. 단계를 누르면 그 단계의 그래프로 바뀌고, 바로 아래에 그 단계의 교재 수식과 설정이 나옵니다. 전개 단계에서는 부분합·계수의 의미·계수 크기·도약을 골라 봅니다. 문제를 바꾼 것은 Ctrl+Z로 되돌립니다.'],
   ['.tools', '그래프를 살펴봅니다', '그래프 위에 마우스를 올리면 값이 보입니다. Ctrl+휠로 확대, 끌어서 이동, 더블클릭으로 원래대로 돌아갑니다. 그래프를 누른 뒤 키보드(←→ 값 읽기, +/− 확대, Enter 점)로도 다룹니다. "고정(비교)"은 지금 결과를 남겨 비교하고, "그래프 담기"는 이 장면을 예제의 그림으로 넣습니다.'],
   ['#bottom', '요약과 개념 설명', '아래 탭에서 요약(그래프 값 표 포함)과 개념 설명을 봅니다. 개념 설명은 "고치기"로 바꿀 수 있습니다. 가운데 줄을 끌어 이 칸의 높이를 바꿉니다.'],
   ['#menubar', '메뉴 줄', '맨 위 메뉴 줄의 "예제 만들기"에서 문제 문장, 배점, 풀이 메모를 쓰고 예제를 모읍니다. "출력"에서 Word나 PDF로 내보냅니다. 파일·편집·보기·도움말 메뉴에 예제 모음 열기·저장, 되돌리기(Ctrl+Z), 발표 모드, 글자 크기, 도움말이 있습니다. 만든 내용은 자동 저장됩니다.'],

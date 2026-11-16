@@ -447,41 +447,13 @@ body.present .menubar .menu, body.present .menu-sep, body.present .pages { displ
 .make-page { padding: 0; }
 .make-main { flex: 1; min-width: 0; overflow-y: auto; padding: 8px 16px; }
 
-/* 풀이 단계 카드 */
-#stages .layer { border: 1px solid var(--line); border-radius: 6px; margin: 6px 0; background: var(--surface); }
-#stages .layer.active { border-color: var(--blue); box-shadow: inset 3px 0 0 var(--blue); }
-#stages .lhead { display: flex; align-items: center; }
-#stages .lname { flex: 1; text-align: left; background: none; border: 0; padding: 6px 8px 4px 10px; font-weight: 600; cursor: pointer; color: var(--ink); font-size: .92rem; }
-#stages .lname small { color: var(--muted); font-weight: 400; margin-left: 6px; font-size: .78rem; }
-#stages .lname em { font-style: normal; color: var(--blue); font-size: .76rem; margin-left: 6px; font-weight: 600; }
-#stages .lhead .x { margin-right: 4px; }
-#stages .lbody { padding: 0 8px 8px 10px; }
-#stages .lbody .hint { display: block; }
-#stages .seg { display: grid; grid-template-columns: repeat(var(--n, 2), 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-#stages .seg button { border: 0; padding: 4px; white-space: nowrap; }
-#stages .seg button:disabled { cursor: default; }
-#stages .seg button:disabled:not([aria-pressed="true"]) { color: var(--muted); }
-#stages .lbody .fld { margin-top: 6px; }
-#stages .dish { margin-top: 8px; padding: 6px 8px; border-left: 3px solid var(--blue); background: var(--blue-soft); font-size: .9rem; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-#stages .dish span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
-#stages .adds { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; align-items: center; }
-#stages .adds .flabel { width: 100%; margin: 0 0 2px; }
-#stages .add { border: 1px dashed var(--muted); background: none; border-radius: 14px; padding: 3px 10px; cursor: pointer; font-size: .84rem; color: var(--ink); }
-#stages .add:hover, #stages .add:focus-visible { border-style: solid; border-color: var(--blue); color: var(--blue); }
 #outPreview h4 small { font-weight: 400; color: var(--muted); margin-left: 6px; }
-#stages .lsum { display: block; color: var(--muted); font-size: .84rem; }
 
 /* 문제 */
 #problem .seg { display: grid; grid-template-columns: repeat(var(--n, 2), 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
 #problem .seg button { border: 0; padding: 4px; white-space: nowrap; }
 #problem .seg button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
 #problem .eqline { margin: 2px 0 6px; text-align: center; }
-#problem .dish { margin-top: 8px; padding: 6px 8px; border-left: 3px solid var(--blue); background: var(--blue-soft); font-size: .9rem; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-#problem .dish span { color: var(--muted); font-size: .8rem; white-space: nowrap; }
-#stages .lname .num { display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: 50%; background: var(--line); color: var(--ink); font-size: .78rem; margin-right: 6px; }
-#stages .layer.active .lname .num { background: var(--blue); color: var(--paper); }
-#stages .lbody .doc { font-size: .86rem; line-height: 1.55; }
-#stages .lbody .doc p { margin: 2px 0 6px; }
 
 /* 그래프 위 풀이 단계 줄 */
 .stagebar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .86rem; }
@@ -491,3 +463,13 @@ body.present .menubar .menu, body.present .menu-sep, body.present .pages { displ
 .stagebar button .num { display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; border-radius: 50%; background: var(--line); font-size: .78rem; }
 .stagebar button[aria-pressed="true"] { border-color: var(--blue); color: var(--blue); font-weight: 600; }
 .stagebar button[aria-pressed="true"] .num { background: var(--blue); color: var(--paper); }
+
+/* 단계 줄 아래: 지금 단계의 수식과 설정 */
+.stagebox { border: 1px solid var(--line); border-left: 3px solid var(--blue); border-radius: 6px; background: var(--surface); padding: 6px 12px; display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; }
+.stagebox .formula { flex: 1 1 420px; font-size: 1rem; line-height: 1.7; }
+.stagebox .formula p { margin: 2px 0; }
+.stagebox .stage-set { flex: 0 1 auto; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: flex-end; }
+.stagebox .stage-set .fld { margin: 0; min-width: 140px; }
+.stagebox .seg { display: grid; grid-template-columns: repeat(var(--n, 2), auto); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.stagebox .seg button { border: 0; padding: 3px 8px; white-space: nowrap; }
+.stagebar .hint { font-weight: 600; color: var(--ink); }

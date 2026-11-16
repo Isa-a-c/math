@@ -24,10 +24,10 @@ window.STUDIO_SELFTEST = () => {
   const fire = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
   const tab = name => { document.querySelector(`[data-tab="${name}"]`).click(); };
   reset({});
-  const recipe = () => $('problem').querySelector('.dish').textContent, card = id => document.querySelector(`#stages [data-stage-card="${id}"]`), cards = () => $$('#stages .layer').length;
-  check(shown() === 'series' && painted() && $('err').hidden && recipe().includes('11장') && recipe().includes('Fourier 급수') && cards() === 2 && card('expand').classList.contains('active') && $('baseFields').textContent.includes('한 주기'), '처음: 방정식 없음 · 주기 영역, 단계 2개(기저 → 전개)');
-  stage('basis'); check(shown() === 'eigen' && painted() && S.frames.eigen.probe(0).length === 4 && card('basis').classList.contains('active'), '기저 함수 단계: 직교 기저 그래프');
-  stage('expand'); look('coef'); check(onList() === 'series,coef' && shown() === 'coef' && !!card('expand').querySelector('#f_coefN'), '전개 단계에서 계수의 의미');
+  const recipe = () => $('stageBar').querySelector('.hint').textContent, active = () => document.querySelector('#stageBar [aria-pressed="true"]').dataset.stage, cards = () => $$('#stageBar [data-stage]').length, box = () => $('stageBox');
+  check(shown() === 'series' && painted() && $('err').hidden && recipe().includes('11장') && recipe().includes('Fourier 급수') && cards() === 2 && active() === 'expand' && $('baseFields').textContent.includes('한 주기'), '처음: 방정식 없음 · 주기 영역, 단계 2개(기저 → 전개)');
+  stage('basis'); check(shown() === 'eigen' && painted() && S.frames.eigen.probe(0).length === 4 && active() === 'basis', '기저 함수 단계: 직교 기저 그래프');
+  stage('expand'); look('coef'); check(onList() === 'series,coef' && shown() === 'coef' && !!box().querySelector('#f_coefN'), '전개 단계에서 계수의 의미');
   look('spectrum'); check(onList() === 'series,coef,spectrum' && shown() === 'spectrum' && text().includes('계수 크기'), '전개 단계에서 계수 크기');
   look('partial');
   prob('domain', 'interval'); check(onList() === 'series,half' && S.cfg.halfMode === 'sine' && recipe().includes('반구간 전개 (사인') && $('baseFields').textContent.includes('0 < x < L') && $('status').textContent.includes('f(x)는 이제'), '구간 (0, L): 양 끝 조건이 사인 급수를 정하고, f의 뜻을 알림');
@@ -35,7 +35,7 @@ window.STUDIO_SELFTEST = () => {
   prob('ends', 'free'); stage('basis'); check(S.cfg.halfMode === 'cosine' && recipe().includes('코사인') && S.frames.eigen.probe(0).every(([, v]) => near(v, 1, 1e-12)), '양 끝 기울기 0: 코사인 급수');
   prob('eq', 'wave'); check(onList() === 'series,half,wave' && cards() === 3 && shown() === 'wave' && !$('transport').hidden && recipe().includes('응용') && !!$('f_c') && !!$('f_g') && $('baseFields').textContent.includes('초기 변위'), '파동 방정식: 단계 3개, 자유 끝은 응용');
   prob('ends', 'fixed'); check(recipe().includes('12장') && recipe().includes('현의 진동') && S.cfg.halfMode === 'sine', '파동 + 구간 + 고정 = 12장 현의 진동');
-  stage('separate'); check(shown() === 'eigen' && card('separate').textContent.includes('변수분리'), '변수분리와 고유값 문제 단계');
+  stage('separate'); check(shown() === 'eigen' && active() === 'separate' && $('stageBar').textContent.includes('변수분리') && box().textContent.includes('경계조건'), '변수분리와 고유값 문제 단계');
   document.querySelector('#stageBar [data-stage="solve"]').click(); draw(); check(shown() === 'wave' && $$('#stageBar [data-stage]').length === 3 && document.querySelector('#stageBar [aria-pressed="true"]').dataset.stage === 'solve' && $('stageBar').textContent.includes('현의 진동'), '그래프 위 단계 줄로 단계 바꾸기');
   stage('expand'); look('spectrum'); check(shown() === 'spectrum' && S.cfg.on.wave && S.cfg.on.spectrum, '초기 변위의 계수 크기');
   prob('damp', 'on'); check(+S.cfg.damping > 0 && !!$('f_kDamp') && recipe().includes('감쇠') && shown() === 'wave', '감쇠 (응용)');
