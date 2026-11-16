@@ -90,7 +90,7 @@ window.STUDIO_SELFTEST = () => {
   check(near(S.R.wave.u(PI / 2, 1), Math.exp(-.5) * (Math.cos(mu2) + .5 / mu2 * Math.sin(mu2)), 1e-6), '감쇠: e^(−kt) 감쇠 진동');
   // 주제 공통 검사: 등록된 모든 주제의 모든 문제(주제를 더하면 저절로 검사됩니다)
   { const bad = [], n = { problems: 0, draws: 0 }, base = { f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, kDamp: '0.2' };
-    const fail = (cfg, what) => bad.push(`${recipeText(cfg)} ${JSON.stringify(cfg.prob)}: ${what}`), junk = s => /undefined|NaN|\[object/.test(s);
+    const fail = (cfg, what) => bad.push(`${recipeText(cfg)} ${JSON.stringify(cfg.prob)}: ${what}`), junk = s => /undefined|NaN|\[object|\t/.test(s);   // \t: 문자열의 '\theta'가 탭으로 바뀐 것
     for (const t of TOPICS) for (const [side, opts] of Object.entries(endOptions(t))) for (const [v, label] of opts) if (!problemsOf(t).some(p => p[side] === v)) bad.push(`${t.id}: ${side} '${label}'을 골라도 남지 않음`);
     for (const t of TOPICS) for (const p of problemsOf(t)) {
       n.problems++;
@@ -147,13 +147,24 @@ window.STUDIO_SELFTEST = () => {
     prob('eq', 'heat'); check(S.R.heat.family.m === 0 && !recipe().includes('θ'), '원판의 열전도는 반지름 방향만(m을 쓰지 않음)');
     prob('eq', 'wave'); set({ mAng: 0 }); prob('eq', 'heat');
     prob('domain', 'interval'); check(S.cfg.f === '1 - (x/L)^2' && $('status').textContent.includes('x, L로') && near(S.R.f(.5), .75, 1e-12), '원판에서 다른 영역으로 가면 식의 r, R을 x, L로 바꿈'); }
+  // 구: Fourier–Legendre 급수, 구 안·밖의 전위. 입력은 x = cos φ(phi로 써도 됨), L은 1로 고정
+  { reset({ f: 'x^2', L: 'pi', N: 9, prob: { eq: 'none', domain: 'sphere' } });
+    check(recipe().includes('Fourier–Legendre') && shown() === 'modes' && painted() && !$('f_L') && !!$('f_N') && near(S.R.modes.c[0], 1 / 3, 1e-6) && near(S.R.modes.c[2], 2 / 3, 1e-6) && near(S.R.modes.c[1], 0, 1e-9) && near(S.R.modes.partial(.3), .09, 1e-6)
+      && problemText('modes', S.good, S.R).includes('P_n(x)') && solutionText('modes', S.good, S.R).includes('\\frac{2n+1}{2}'), 'Fourier–Legendre 급수: x² = P₀/3 + 2P₂/3, L 칸 없음');
+    stage('basis'); check(shown() === 'eigen' && painted() && near(S.frames.eigen.probe(.5)[2][1], -.125, 1e-12) && S.frames.eigen.xr[0] === -1, 'Legendre 다항식 그래프: P₂(1/2) = −1/8, 구간 (−1, 1)');
+    prob('eq', 'laplace'); set({ f: 'x > 0 ? 1 : 0' });
+    check(S.cfg.prob.domain === 'sphere' && recipe().includes('구 안의 전위') && shown() === 'sphere' && painted() && $('transport').hidden && near(S.R.sphere.u(1e-9, .3), .5, 1e-9) && near(S.R.sphere.c[1], .75, 1e-6)
+      && $('problem').textContent.includes('구면 r = R') && solutionText('sphere', S.good, S.R).includes('\\left(\\frac{r}{R}\\right)^{n}') && $('problem').textContent.includes('∇'), '구 안의 전위: 위 반구 1, 아래 0 → 중심 1/2, A₁ = 3/4');
+    prob('right', 'outside'); check(recipe().includes('구 밖') && near(S.R.sphere.u(2, 1), S.R.sphere.c.reduce((s, c, n) => s + c / 2 ** (n + 1), 0), 1e-12) && near(S.R.sphere.c[3], -7 / 16, 1e-6) && summary(S.good, S.R).some(([, t]) => t.includes('R</i>/<i>r')), '구 밖의 전위: (R/r)ⁿ⁺¹');
+    set({ f: 'cos(phi)^2' }); check($('err').hidden && near(S.R.sphere.c[0], 1 / 3, 1e-6) && near(S.R.f(.5), .25, 1e-12), '구에서 phi로 입력: cos²φ = x²');
+    prob('eq', 'none'); prob('domain', 'interval'); check(S.cfg.f === 'cos(acos(x))^2' && $('status').textContent.includes('acos(x)'), '구에서 다른 영역으로 가면 phi를 acos(x)로 바꿈'); }
   // 고유함수 종류 공통 검사: 끝 조건과 직교성(FAMILIES에 줄을 더하면 저절로 검사됩니다)
   { const bad = [], L = 1.3, hD = 1e-6;
     for (const fam of [...FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' })), ...['bessel', 'besselFree'].map(id => familyOf({ family: id, angular: true, mAng: 2 }))]) {
-      const w = fam.w ?? (() => 1), d = (n, x) => (fam.phi(n, x + hD, L) - fam.phi(n, x - hD, L)) / (2 * hD);
+      const w = fam.w ?? (() => 1), d = (n, x) => (fam.phi(n, x + hD, L) - fam.phi(n, x - hD, L)) / (2 * hD), span = spanOf(fam, L);
       for (let m = fam.n0; m < fam.n0 + 4; m++) {
-        fam.ends.forEach((e, i) => { const x = i ? L : 0, v = fam.phi(m, x, L), dv = d(m, x), ok = { fixed: Math.abs(v) < 1e-9, free: Math.abs(dv) < 1e-5, center: fam.m ? Math.abs(v) < 1e-9 : Math.abs(dv) < 1e-5, robin: Math.abs(dv + (i ? 1 : -1) * (fam.h ?? 0) * v) < 1e-5 }[e]; if (!ok) bad.push(`${fam.key ?? fam.id} n=${m}: ${e} 끝`); });
-        for (let k = fam.n0; k < fam.n0 + 4; k++) { const ip = integrate(x => w(x) * fam.phi(m, x, L) * fam.phi(k, x, L), 0, L); if (Math.abs(ip - (m === k ? normOf(fam, k, L) : 0)) > 1e-6 * L) bad.push(`${fam.id}: <φ${m}, φ${k}> = ${ip}`); }
+        fam.ends.forEach((e, i) => { const x = span[i], v = fam.phi(m, x, L), dv = d(m, x), ok = { pole: Math.abs(v - (i || m % 2 === 0 ? 1 : -1)) < 1e-12, fixed: Math.abs(v) < 1e-9, free: Math.abs(dv) < 1e-5, center: fam.m ? Math.abs(v) < 1e-9 : Math.abs(dv) < 1e-5, robin: Math.abs(dv + (i ? 1 : -1) * (fam.h ?? 0) * v) < 1e-5 }[e]; if (!ok) bad.push(`${fam.key ?? fam.id} n=${m}: ${e} 끝`); });
+        for (let k = fam.n0; k < fam.n0 + 4; k++) { const ip = integrate(x => w(x) * fam.phi(m, x, L) * fam.phi(k, x, L), ...span); if (Math.abs(ip - (m === k ? normOf(fam, k, L) : 0)) > 1e-6 * L) bad.push(`${fam.id}: <φ${m}, φ${k}> = ${ip}`); }
       }
     }
     check(!bad.length, `고유함수 종류 ${FAMILIES.length}개의 끝 조건과 직교성(∫wφₘφₙ = 0, ∫wφₙ² = 노름)${bad.length ? ` (${bad.slice(0, 3).join(' / ')})` : ''}`); }

@@ -83,7 +83,7 @@ function scanRange(fn, xr, times) {
 /** 급수 모델은 함수·L·전개 방식이 같으면 다시 쓰므로, N을 바꿀 때 다시 계산하지 않습니다(정밀 계수 캐시도 함께 남음). */
 const SERIES_CACHE = new Map();
 function seriesOf(cfg, f, L) {
-  const key = JSON.stringify([cfg.f, cfg.L, cfg.params, cfg.on.half ? cfg.halfMode : 'full']);
+  const key = JSON.stringify([srcOf(cfg, 'f'), L, cfg.params, cfg.on.half ? cfg.halfMode : 'full']);
   if (!SERIES_CACHE.has(key)) {
     if (SERIES_CACHE.size > 24) SERIES_CACHE.delete(SERIES_CACHE.keys().next().value);
     SERIES_CACHE.set(key, buildSeries(f, L, cfg.on.half ? cfg.halfMode : 'full', 0));
@@ -143,7 +143,7 @@ function integralModel(f, X, wMax) {
   return { X, wMax, ws, A, B, recon, f, edge, span: hi - lo, yr: [lo - .2 * (hi - lo || 1), hi + .2 * (hi - lo || 1)] };
 }
 function compute(cfg) {
-  const L = positive(cfg, 'L', 'L'), f = fnOf(cfg, 'f', '함수 f(x)', L), N = cfg.N;
+  const L = domainL(cfg) ?? positive(cfg, 'L', 'L'), f = fnOf(cfg, 'f', '함수 f(x)', L), N = cfg.N;
   const R = { L, f, N, series: seriesOf(cfg, f, L) };
   R.view = { x: rangeOf(cfg, 'xMin', 'xMax', '그래프 가로 범위', L), y: rangeOf(cfg, 'yMin', 'yMax', '그래프 세로 범위', L) };
   const X = anyInfinite(cfg) ? positive(cfg, 'X', '범위 X', L) : 0;
@@ -264,7 +264,7 @@ function piecesOf(text) {
   return out;
 }
 const piecesExpr = pieces => pieces.slice(0, -1).reduceRight((rest, p) => `x<${p.until} ? ${p.expr} : ${rest}`, pieces.at(-1).expr);
-const halfDomain = cfg => cfg.on.half || cfg.on.modes || cfg.on.laplace || needsHalf(cfg);
+const halfDomain = cfg => cfg.prob?.domain !== 'sphere' && (cfg.on.half || cfg.on.modes || cfg.on.laplace || needsHalf(cfg));
 const toPieces = (f, cfg) => { const p = piecesOf(f); return p && p.length > 1 ? p : [{ until: halfDomain(cfg) ? 'L/2' : '0', expr: f }, { until: null, expr: f }]; };
 /** 함수를 문서용 글로 씁니다. 구간별이면 구간마다 식과 범위를 씁니다. */
 /** 함수를 문서용 글로 씁니다. 원판이면 f(r)로 씁니다. */
@@ -274,6 +274,6 @@ function fMarkupX(cfg) {
   if (rows && rows.length > 1) return rows.map((r, i) => `${i ? '' : '$f(x) = $ '}$${polyTex(r.poly)}$ ($${piTex(r.lo)} \\le x < ${piTex(r.hi)}$)`).join(', ');
   const pieces = piecesOf(cfg.f), pe = s => prettyExpr(s, cfg.params);
   if (!pieces || pieces.length === 1) return `$f(x) = ${pe(cfg.f)}$`;
-  const bounds = [halfDomain(cfg) ? '0' : '−L', ...pieces.slice(0, -1).map(p => pe(p.until)), 'L'];
+  const [e0, e1] = fEnds(cfg), bounds = [e0, ...pieces.slice(0, -1).map(p => pe(p.until)), e1];
   return pieces.map((p, i) => `${i ? '' : '$f(x) = $ '}$${pe(p.expr)}$ ($${bounds[i]} \\le x < ${bounds[i + 1]}$)`).join(', ');
 }

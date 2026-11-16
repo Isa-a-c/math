@@ -17,6 +17,8 @@ const DOMAINS = [
     sides: [['left', 'x = 0 변'], ['right', 'x = a 변'], ['bottom', 'y = 0 변'], ['top', 'y = b 변']] },
   { id: 'disk', label: '원판 (반지름 r)', where: '0 ≤ r < R (R = L)', lLabel: '반지름 R = L', why: '원판은 Fourier–Bessel 급수, 원형 막, 원판의 열전도에 있습니다.',
     sides: [['right', '가장자리 r = R']], vars: [['r', 'x'], ['R', 'L']] },
+  { id: 'sphere', label: '구 (Legendre)', where: '−1 < x < 1 (구에서는 x = cos φ)', fixedL: 1, why: '구는 Fourier–Legendre 급수와 구의 전위(라플라스 방정식)에 있습니다.',
+    sides: [['right', '전위를 구할 곳']], vars: [['phi', 'acos(x)']] },
 ];
 /** 경계 조건을 담는 문제의 칸입니다. 어느 칸을 고르게 할지는 영역(sides)과 주제(ends)가 정합니다. */
 const SIDE_KEYS = ['left', 'right', 'bottom', 'top'];
@@ -24,6 +26,10 @@ const topicFor = (eq, domain) => TOPICS.find(t => t.eq === eq && t.domain === do
 const topicOf = cfg => topicFor(cfg.prob.eq, cfg.prob.domain);
 const domainOk = (eq, domain) => !!topicFor(eq, domain);
 const domainLabel = id => DOMAINS.find(d => d.id === id)?.label ?? id;
+/** 영역이 정한 L(구는 −1 < x < 1이므로 1)입니다. 없으면 undefined(입력한 L)입니다. */
+const domainL = cfg => DOMAINS.find(d => d.id === cfg.prob?.domain)?.fixedL;
+/** 함수를 입력하는 구간의 양 끝 글자입니다. */
+const fEnds = cfg => cfg.prob?.domain === 'sphere' ? ['−1', '1'] : [halfDomain(cfg) ? '0' : '−L', 'L'];
 /** 전개 단계에서 그래프로 볼 것과 그때 쓰는 개념 모듈입니다. */
 const LOOKS = [['partial', '부분합'], ['coef', '계수의 의미'], ['spectrum', '계수 크기'], ['gibbs', '수렴과 도약']];
 const LOOK_USES = { partial: [], coef: ['coef'], spectrum: ['coef', 'spectrum'], gibbs: ['gibbs'] };
@@ -96,7 +102,7 @@ const INTEGRAL_MD = String.raw`$f(x) = \int_0^{\infty}[A(w)\cos wx + B(w)\sin wx
 /** 고유함수로 푸는 파동·열(구간, 원판): 변수분리와 고유값 문제 → 초기조건의 전개 → 해. 수식은 고유함수 종류(eigen.js)에서 만듭니다. */
 function eigenStages(cfg, heat) {
   const p = cfg.prob, fam = familyOf(cfg), classic = fam.id === 'sine' || fam.id === 'cosine', c0 = fam.n0 === 0, A = c0 ? 'A' : 'B', phi = fam.tex;
-  const v = fam.radial ? 'r' : 'x', E = fam.radial ? 'R' : 'L', ang = fam.m ? String.raw`\cos ${fam.m}\theta` : '', uv = fam.m ? 'r,\theta' : v;
+  const v = fam.radial ? 'r' : 'x', E = fam.radial ? 'R' : 'L', ang = fam.m ? String.raw`\cos ${fam.m}\theta` : '', uv = fam.m ? String.raw`r,\theta` : v;
   let Lv = NaN; try { Lv = constant(cfg.L, 1); } catch { /* 입력 중 */ }
   const endTex = i => { const e = fam.ends[i], x = i ? E : '0'; return e === 'center' ? String.raw`|u(0,t)| < \infty` : e === 'fixed' ? (heat ? `u(${x},t) = U${fam.radial ? '' : `_${i + 1}`}` : `u(${x},t) = 0`) : e === 'robin' ? `u_${v}(${x},t) ${i ? '+' : '-'} hu(${x},t) = 0` : `u_${v}(${x},t) = 0`; };
   const steadyNote = heat && fam.ends.includes('fixed') ? `. 끝 온도가 0이 아니면 정상 상태 $U(${v})$를 뺀 $f - U$를 전개합니다.` : '';

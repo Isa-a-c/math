@@ -81,6 +81,10 @@ function besselFamily(rim, m = 0) {
     label: n => n ? `J${subDigits(m)}(${ap}${subDigits(n)}<i>r</i>/<i>R</i>)` : '1' };
 }
 
+/* ── Legendre 다항식 ─────────────────────────────── */
+/** Pₙ(x): (n + 1)Pₙ₊₁ = (2n + 1)xPₙ − nPₙ₋₁ */
+function legendreP(n, x) { if (n === 0) return 1; let p0 = 1, p1 = x; for (let k = 1; k < n; k++) { const p2 = ((2 * k + 1) * x * p1 - k * p0) / (k + 1); p0 = p1; p1 = p2; } return p1; }
+
 /* ── 열 방출(Robin) 끝: kₙ은 방정식의 근 ─────────────── */
 /** 열 방출 계수 h(cfg.hRobin). 계산 단계에서 positive로 따로 검사하므로 여기서는 틀리면 1로 둡니다. */
 const robinH = cfg => { try { const h = constant(cfg?.hRobin ?? '1', 1); return h > 0 ? h : 1; } catch { return 1; } };
@@ -142,8 +146,17 @@ const FAMILIES = [
   // 원판(반지름 방향, 가중치 r). x 자리가 반지름 r, L이 반지름 R입니다. 각 방향 차수 m은 make(cfg)가 넣습니다.
   besselFamily('fixed'),
   besselFamily('free'),
+  // 구(Legendre 방정식): 구간이 (−1, 1)로 정해져 있고(span), 양 끝(극)에서 유한합니다. 구에서는 x = cos φ입니다.
+  { id: 'legendre', ends: ['pole', 'pole'], n0: 0, span: [-1, 1], k: n => Math.sqrt(n * (n + 1)), phi: (n, x) => legendreP(n, x),
+    norm: n => 2 / (2 * n + 1), ode: String.raw`(1 - x^2)F'' - 2xF' + n(n+1)F = 0`,
+    tex: 'P_n(x)', kTex: String.raw`\sqrt{n(n+1)}`, plain: 'Pₙ(x)', title: '−1 ≤ x ≤ 1에서 유한 (Legendre 방정식)',
+    kMd: () => String.raw`고유값은 $n(n+1)$이고 고유함수는 Legendre 다항식 $P_0 = 1$, $P_1 = x$, $P_2 = \frac{1}{2}(3x^2 - 1)$, $P_3 = \frac{1}{2}(5x^3 - 3x)$, …입니다.`,
+    coefTex: (c, f) => String.raw`${c}_n = \frac{2n+1}{2}\int_{-1}^{1} ${f}P_n(x)\,dx`,
+    label: n => `<i>P</i>${subDigits(n)}(<i>x</i>)` },
 ];
-/** 양 끝 조건에 맞는 고유함수 종류입니다(값을 넣지 않은 표의 줄). 원판은 ('center', 가장자리)입니다. */
+/** 고유함수의 구간: 종류가 정하지 않으면 (0, L)입니다. */
+const spanOf = (fam, L) => fam.span ?? [0, L];
+/** 양 끝 조건에 맞는 고유함수 종류입니다(값을 넣지 않은 표의 줄). 원판은 ('center', 가장자리), 구는 ('pole', 'pole')입니다. */
 const familyFor = (left, right) => FAMILIES.find(f => f.ends[0] === left && f.ends[1] === right) ?? FAMILIES[0];
 /** ∫ w φₙ² (기본: 상수 고유함수면 L, 아니면 L/2) */
 const normOf = (fam, n, L) => fam.norm ? fam.norm(n, L) : n === 0 ? L : L / 2;
@@ -155,8 +168,8 @@ const coefTexOf = (fam, c = 'c', f = 'f(x)') => fam.coefTex ? fam.coefTex(c, f)
     : String.raw`${c}_n = \frac{2}{L}\int_0^L ${f}${fam.tex}\,dx${fam.n0 === 0 ? String.raw`,\quad ${c}_0 = \frac{1}{L}\int_0^L ${f}\,dx` : ''}`;
 /** 계수 cₙ = ∫ w f φₙ / ∫ w φₙ². 화면용 중점 적분입니다. */
 function eigenCoefficients(fam, fn, L, N) {
-  const m = QUAD, h = L / m, xs = new Float64Array(m), v = new Float64Array(m), c = new Float64Array(N + 1), w = fam.w;
-  for (let j = 0; j < m; j++) { xs[j] = (j + .5) * h; v[j] = fn(xs[j]) * (w ? w(xs[j]) : 1); if (!isFinite(v[j])) throw new Error('구간 안에 값이 정의되지 않는 점이 있습니다.'); }
+  const [a, b] = spanOf(fam, L), m = QUAD, h = (b - a) / m, xs = new Float64Array(m), v = new Float64Array(m), c = new Float64Array(N + 1), w = fam.w;
+  for (let j = 0; j < m; j++) { xs[j] = a + (j + .5) * h; v[j] = fn(xs[j]) * (w ? w(xs[j]) : 1); if (!isFinite(v[j])) throw new Error('구간 안에 값이 정의되지 않는 점이 있습니다.'); }
   for (let n = fam.n0; n <= N; n++) { let s = 0; for (let j = 0; j < m; j++) s += v[j] * fam.phi(n, xs[j], L); c[n] = s * h / normOf(fam, n, L); }
   return c;
 }
@@ -165,7 +178,7 @@ const eigenCache = new WeakMap();
 function fineEigen(fam, fn, L, n) {
   const memo = eigenCache.get(fn) ?? new Map(), key = `${fam.key ?? fam.id}|${L}|${n}`, w = fam.w;
   eigenCache.set(fn, memo);
-  if (!memo.has(key)) memo.set(key, integrate(x => fn(x) * (w ? w(x) : 1) * fam.phi(n, x, L), 0, L) / normOf(fam, n, L));
+  if (!memo.has(key)) memo.set(key, integrate(x => fn(x) * (w ? w(x) : 1) * fam.phi(n, x, L), ...spanOf(fam, L)) / normOf(fam, n, L));
   return memo.get(key);
 }
 /** 부분합 Σ cₙφₙ(x) (n0부터 N까지)입니다. */

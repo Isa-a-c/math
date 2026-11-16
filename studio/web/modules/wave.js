@@ -50,6 +50,7 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
   },
   summary(cfg, R) {
     const out = [], W = R.wave, t = timeOf(W, cfg);
+    if (cfg.on.membrane) return out;   // 막은 막 모듈이 요약합니다(현의 주기·자유 끝 줄은 막에 맞지 않음).
     if (cfg.waveDomain === 'finite') {
       const fam = W.family, ends = Math.max(W.family.ends[0] === 'fixed' ? Math.abs(R.f(0)) : 0, W.family.ends[1] === 'fixed' ? Math.abs(R.f(R.L)) : 0);
       out.push([fam.radial ? '원형 막' : '현의 진동', `${fam.harmonic ? `주기 ${m(`<i>T</i> = 2π/<i>λ</i><sub>1</sub> = ${fmt(W.T, 4)}`)}, ` : ''}기본 각진동수 ${m(`<i>λ</i><sub>1</sub> = ${coefText(W.omega(1))}`)}.${fam.harmonic ? '' : ` ${m('<i>λ</i><sub><i>n</i></sub>')}이 정수배가 아니어서 주기적이지 않습니다.`} 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.${ends > 1e-6 ? ' 초기 변위가 양 끝에서 0이 아니어서 끝점 부근에서 급수가 함수와 다릅니다.' : ''}`]);

@@ -41,7 +41,7 @@ function blocksHtml(blocks, print = false) {
 
 /* ── 글 표기: 문단은 빈 줄로 나누고, $…$는 수식, $$…$$만 있는 문단은 가운데 수식, '> '로 시작하면 강조 상자, **…**는 굵게 ── */
 const TEX_SYMBOL = { pi: 'π', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ', theta: 'θ', omega: 'ω', sigma: 'σ', phi: 'φ', mu: 'μ', rho: 'ρ', tau: 'τ', Delta: 'Δ',
-  infty: '∞', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', approx: '≈', cdot: '·', times: '×', to: '→', pm: '±', partial: '∂', ldots: '…', cdots: '⋯', dots: '…' };
+  infty: '∞', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', approx: '≈', cdot: '·', times: '×', to: '→', pm: '±', partial: '∂', nabla: '∇', ldots: '…', cdots: '⋯', dots: '…' };
 const TEX_SPACE = { ',': ' ', ';': ' ', ' ': ' ', quad: ' ', qquad: '  ' };
 const TEX_FUNCTIONS = ['sin', 'cos', 'tan', 'exp', 'ln', 'log', 'sinh', 'cosh', 'tanh', 'sign', 'abs', 'step', 'sqrt', 'max', 'min', 'lim', 'arctan'];
 /** LaTeX와 비슷한 수식 표기를 수식 조각으로 바꿉니다: a_n, x^2, \frac{a}{b}, \int_{a}^{b}, \sum_{n=1}^{\infty}, \sqrt{x}, \pi, \cos x, \text{글}. */

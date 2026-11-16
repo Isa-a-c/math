@@ -12,7 +12,7 @@ function select(id) { const [p, look] = CONCEPT_PROBLEM[id](S.cfg); Object.assig
 const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length > 4 ? 3 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
 /** 왼쪽 위 '문제': 고르는 것만(방정식, 영역, 끝·변의 조건, 감쇠). 상수는 '함수와 값', 교재의 절은 그래프 위 단계 줄에 있습니다. */
 function problemHtml(cfg) {
-  const p = cfg.prob, heat = p.eq === 'heat', eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
+  const p = cfg.prob, heat = p.eq === 'heat', eqTex = topicOf(cfg).eqTex ?? EQUATIONS.find(e => e.id === p.eq).tex;
   let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
     + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
   const t = topicOf(cfg);
@@ -50,13 +50,13 @@ function changeProblem(key, value) {
   const p = S.cfg.prob, before = { domain: p.domain, role: roleOf(S.cfg) };
   if (key === 'ends') p.left = p.right = value; else if (key === 'damp') p.damp = value === 'on'; else p[key] = value;
   normalizeProblem(p); S.cfg.stage = null;
-  // 원판에서 쓰던 글자(r, R)는 다른 영역에서 x, L로 바꿔 둡니다.
+  // 원판에서 쓰던 글자(r, R)나 구에서 쓰던 phi는 다른 영역에서 x, L이나 acos(x)로 바꿔 둡니다.
   const was = { f: S.cfg.f, g: S.cfg.g }, renamed = p.domain !== before.domain && DOMAINS.find(d => d.id === before.domain).vars;
   if (renamed) for (const k of ['f', 'g']) S.cfg[k] = srcOf({ ...S.cfg, prob: { domain: before.domain } }, k);
   applyProblem(S.cfg);
   const notes = [], role = roleOf(S.cfg);
-  if (renamed && (S.cfg.f !== was.f || S.cfg.g !== was.g)) notes.push('식의 r, R을 x, L로 바꿨습니다.');
-  if (key !== 'domain' && p.domain !== before.domain) notes.push(`영역을 ${domainLabel(p.domain)}(으)로 바꿨습니다.`);
+  if (renamed && (S.cfg.f !== was.f || S.cfg.g !== was.g)) notes.push(`식의 ${renamed.map(v => v[0]).join(', ')}을 ${renamed.map(v => v[1]).join(', ')}로 바꿨습니다.`);
+  if (key !== 'domain' && p.domain !== before.domain) notes.push(`영역을 ${domainLabel(p.domain)}로 바꿨습니다.`);
   if (role !== before.role) notes.push(`입력한 f(x)는 이제 ${role}입니다.`);
   setStatus(`${notes.join(' ') || `문제: ${recipeText(S.cfg)}`}`, { label: '되돌리기', fn: undo });
   renderSettings(); recompute();
@@ -106,7 +106,7 @@ function undo() {
 }
 
 /* ── 설정 화면 ─────────────────────────────────────── */
-const hintOf = cfg => cfg.prob?.domain === 'disk' ? '반지름 방향 함수. r(또는 x)과 R로 씁니다. 예: 1 - (r/R)^2, cos(pi*r/(2*R))' : halfDomain(cfg) ? '(0, L)에서의 함수. 예: x*(L-x), sin(pi*x/L), sin x' : '예: x^2, sign(x), abs(x), 2 sin x + 1';
+const hintOf = cfg => cfg.prob?.domain === 'sphere' ? '−1 < x < 1의 함수(구에서는 x = cos φ). phi로 써도 됩니다. 예: x^2, x > 0 ? 1 : 0, cos(phi)^2' : cfg.prob?.domain === 'disk' ? '반지름 방향 함수. r(또는 x)과 R로 씁니다. 예: 1 - (r/R)^2, cos(pi*r/(2*R))' : halfDomain(cfg) ? '(0, L)에서의 함수. 예: x*(L-x), sin(pi*x/L), sin x' : '예: x^2, sign(x), abs(x), 2 sin x + 1';
 function fieldHtml(field, cfg) {
   const { k, label, hint } = field, id = `f_${k}`;
   if (field.type === 'seg') return `<div class="fld"><span class="flabel">${label}</span><div class="seg" style="--n:${field.options.length}">${field.options.map(([value, text]) => `<button type="button" data-seg="${k}" data-value="${value}" aria-pressed="${cfg[k] === value}">${text}</button>`).join('')}</div></div>`;
@@ -119,7 +119,7 @@ function previewHtml(cfg) {
   if (rows && rows.length > 1) return `<span class="m"><i>f</i>(<i>x</i>) =</span><span class="cases"><span class="brace">{</span><span class="rows">${rows.map(r => `<span><span class="m">${tex(polyTex(r.poly)).h}</span><em class="m">${tex(piTex(r.lo)).h} ≤ <i>x</i> &lt; ${tex(piTex(r.hi)).h}</em></span>`).join('')}</span></span>`;
   const pieces = piecesOf(cfg.f), node = s => tex(prettyExpr(s)).h;
   if (!pieces || pieces.length === 1) return `<span class="m"><i>f</i>(<i>x</i>) = ${node(cfg.f)}</span>`;
-  const bounds = [halfDomain(cfg) ? '0' : '−L', ...pieces.slice(0, -1).map(p => p.until), 'L'];
+  const [e0, e1] = fEnds(cfg), bounds = [e0, ...pieces.slice(0, -1).map(p => p.until), e1];
   return `<span class="m"><i>f</i>(<i>x</i>) =</span><span class="cases"><span class="brace">{</span><span class="rows">${pieces.map((p, i) => `<span><span class="m">${node(p.expr)}</span><em class="m">${node(bounds[i])} ≤ <i>x</i> &lt; ${node(bounds[i + 1])}</em></span>`).join('')}</span></span>`;
 }
 function renderPreview() {
@@ -134,12 +134,13 @@ function fHtml(cfg) {
   const rows = cfg.pieces.map((p, i) => i < last
     ? `<div class="piece"><span>x &lt;</span><input class="tf until" type="text" spellcheck="false" autocomplete="off" data-piece="${i}" data-part="until" aria-label="${i + 1}번 구간의 끝" value="${esc(p.until)}"><span>이면</span><input class="tf" type="text" spellcheck="false" autocomplete="off" data-piece="${i}" data-part="expr" aria-label="${i + 1}번 구간의 식" value="${esc(p.expr)}"><button type="button" class="x" data-unpiece="${i}" aria-label="${i + 1}번 구간 빼기">×</button></div>`
     : `<div class="piece"><span>그 외</span><input class="tf" type="text" spellcheck="false" autocomplete="off" data-piece="${i}" data-part="expr" aria-label="마지막 구간의 식" value="${esc(p.expr)}"></div>`).join('');
-  return `${mode}<div class="fld"><span class="hint">구간 ${halfDomain(cfg) ? '0' : '−L'} ~ L을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
+  return `${mode}<div class="fld"><span class="hint">구간 ${fEnds(cfg).join(' ~ ')}을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
 }
 function renderSettings() {
   const cfg = S.cfg, p = cfg.prob, dom = DOMAINS.find(d => d.id === p.domain), base = [
     ...(topicOf(cfg).fields?.(p) ?? []),
-    ...(dom.lLabel ? [{ k: 'L', type: 'text', label: dom.lLabel, hint: 'pi, 2, 1/2처럼 씁니다.' }, { k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }] : []),
+    ...(dom.lLabel ? [{ k: 'L', type: 'text', label: dom.lLabel, hint: 'pi, 2, 1/2처럼 씁니다.' }] : []),
+    ...(dom.lLabel || dom.fixedL ? [{ k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }] : []),
     ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '보이는 범위 X (−X < x < X)' }] : [])];
   $('problem').innerHTML = problemHtml(cfg);
   $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml({ ...f, label: esc(f.label) }, cfg)).join('');

@@ -158,7 +158,7 @@ function parsePiecewise(text, L, params = {}) {
  */
 function piecewiseRows(cfg, half) {
   try {
-    const L = constOf(parsePiecewise(String(cfg.L), PI1, {}));
+    const L = constOf(parsePiecewise(String(domainL(cfg) ?? cfg.L), PI1, {}));
     if (!L || L.value <= 0) return null;
     const pw = parsePiecewise(String(cfg.f), L, cfg.params ?? {}), lo = half ? PI0 : L.neg(), hi = L;
     const inner = pw.cuts.filter(c => c.value > lo.value + 1e-12 && c.value < hi.value - 1e-12), edges = [lo, ...inner, hi], rows = [];

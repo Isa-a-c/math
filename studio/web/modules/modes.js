@@ -14,15 +14,15 @@ $$f(x) = \sum_{n=1}^{\infty} c_n\varphi_n(x),\quad c_n = \frac{\int_0^L f\varphi
     const fam = familyOf(cfg);
     if (fam.h) positive(cfg, 'hRobin', '열 방출 계수 h', L);
     const c = eigenCoefficients(fam, f, L, Math.max(N, 30));
-    let err = 0; const q = 800, h = L / q;
-    for (let i = 0; i < q; i++) { const x = (i + .5) * h; err += (f(x) - eigenSum(fam, c, L, N, x)) ** 2 * h; }
-    R.modes = { fam, c, L, err, partial: x => eigenSum(fam, c, L, N, x) };
+    const span = spanOf(fam, L); let err = 0; const q = 800, h = (span[1] - span[0]) / q;
+    for (let i = 0; i < q; i++) { const x = span[0] + (i + .5) * h; err += (f(x) - eigenSum(fam, c, L, N, x)) ** 2 * h; }
+    R.modes = { fam, c, L, span, err, partial: x => eigenSum(fam, c, L, N, x) };
   },
   panels: {
     modes(ctx, w, h, C, cfg, R) {
-      const Md = R.modes, fam = Md.fam, L = Md.L, [p, q] = stacked(w, h, C, .62), xr = rangeX([0, L], R);
-      let lo = 0, hi = 0; for (let i = 0; i <= 200; i++) { const x = i / 200 * L, a = R.f(x), b = Md.partial(x); lo = Math.min(lo, a, b); hi = Math.max(hi, a, b); }
-      const pad = Math.max(.1, .15 * (hi - lo)), yr = rangeY([lo - pad, hi + pad], R), M = axes(ctx, p, xr, yr, C, { xTicks: piTicks(xr, L, L / 4) });
+      const Md = R.modes, fam = Md.fam, L = Md.L, [s0, s1] = Md.span, [p, q] = stacked(w, h, C, .62), xr = rangeX(Md.span, R);
+      let lo = 0, hi = 0; for (let i = 0; i <= 200; i++) { const x = s0 + i / 200 * (s1 - s0), a = R.f(x), b = Md.partial(x); lo = Math.min(lo, a, b); hi = Math.max(hi, a, b); }
+      const pad = Math.max(.1, .15 * (hi - lo)), yr = rangeY([lo - pad, hi + pad], R), M = axes(ctx, p, xr, yr, C, fam.span ? {} : { xTicks: piTicks(xr, L, L / 4) });
       curve(ctx, R.f, p, xr, M, C.ink, 2.5);
       curve(ctx, Md.partial, p, xr, M, C.blue, 3);
       bars(ctx, q, C, [[C.blue, n => Md.c[n]]], cfg.N);
@@ -33,16 +33,17 @@ $$f(x) = \sum_{n=1}^{\infty} c_n\varphi_n(x),\quad c_n = \frac{\int_0^L f\varphi
     },
   },
   summary(cfg, R) {
-    const Md = R.modes, first = [1, 2, 3].map(n => `c${n} ≈ ${fmt(Md.c[n], 4)}`).join(', ');
+    const Md = R.modes, first = [Md.fam.n0, Md.fam.n0 + 1, Md.fam.n0 + 2].map(n => `${Md.fam.span ? "A" : "c"}${n} ≈ ${fmt(Md.c[n], 4)}`).join(', ');
     return [['고유함수 전개', `고유함수 ${m(Md.fam.plain)}(${Md.fam.title})로 전개했습니다. ${m(first)}, 항 ${cfg.N}개의 제곱오차 ${m(`∫(<i>f</i> − <i>S<sub>N</sub></i>)² = ${errText(Md.err)}`)}`]];
   },
   items: {
     modes: { label: '고유함수 전개', auto: true,
       problem(cfg, R, { Ls }) {
         const fam = familyOf(cfg);
+        if (fam.span) return `${fMarkup(cfg)}를 $-1 < x < 1$에서 Legendre 다항식 $P_n(x)$ ($n = 0, 1, 2, \\ldots$)로 전개하시오(Fourier–Legendre 급수).`;
         return fam.radial ? `${fMarkup(cfg)}를 $0 \\le r < R$ ($R = ${Ls}$)에서 고유함수 $${fam.tex}$로 전개하시오(Fourier–Bessel 급수${fam.m ? `, 처음 모양 $f(r)\\cos ${fam.m}\\theta$의 반지름 방향` : ''}).`
           : `${fMarkup(cfg)}를 $0 < x < L$ ($L = ${Ls}$)에서 고유함수 $${fam.tex}$ ($n = ${fam.n0}, ${fam.n0 + 1}, \\ldots$)로 전개하시오.${fam.h ? ` (고유함수는 ${fam.ends.map((e, i) => e === 'robin' ? `$x = ${i ? 'L' : '0'}$에서 $f' ${i ? '+' : '-'} hf = 0$` : '').filter(Boolean).join(', ')}, $h = ${prettyExpr(cfg.hRobin)}$인 조건에서 나온다.)` : ''}`;
       },
-      solution: (cfg, R, { tol }) => { const fam = familyOf(cfg); return eigenSteps(cfg, R, { fam, tol, fnTex: fam.radial ? 'f(r)' : 'f(x)' }); } },
+      solution: (cfg, R, { tol }) => { const fam = familyOf(cfg); return eigenSteps(cfg, R, { fam, tol, fnTex: fam.radial ? 'f(r)' : 'f(x)', name: fam.span ? 'A' : 'c' }); } },
   },
 });
