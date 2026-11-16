@@ -12,12 +12,17 @@ $$\text{사인:}\quad b_n = \frac{2}{L}\int_{0}^{L} f(x)\sin\frac{n\pi x}{L}\,dx
   summary: cfg => [['반구간 전개', `(0, L)의 함수를 ${cfg.halfMode === 'cosine' ? '우함수로 확장해 코사인' : '기함수로 확장해 사인'} 항만 남겼습니다.${needsHalf(cfg) ? ' 현·막대의 해가 이 전개를 씁니다.' : ''}`]],
 });
 defineTopic({
-  id: 'halfRange', eq: 'none', domain: 'interval', look: true,
-  ends: [['fixed', '값 0 → 사인 급수'], ['free', '기울기 0 → 코사인 급수']],
-  name: p => ['11장', `반구간 전개 (${p.left === 'fixed' ? '사인' : '코사인'} 급수)`],
-  uses: () => ['series', 'half'], params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine' }),
+  id: 'halfRange', eq: 'none', domain: 'interval', look: p => p.left === p.right, mixed: true,
+  ends: [['fixed', '값 0'], ['free', '기울기 0']],
+  name: p => p.left === p.right ? ['11장', `반구간 전개 (${p.left === 'fixed' ? '사인' : '코사인'} 급수)`] : [null, `고유함수 전개 (${familyFor(p.left, p.right).plain})`],
+  uses: p => p.left === p.right ? ['series', 'half'] : ['modes'],
+  params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id }),
   stages: cfg => {
-    const fixed = cfg.prob.left === 'fixed';
+    const p = cfg.prob, fam = familyFor(p.left, p.right), fixed = p.left === 'fixed';
+    if (p.left !== p.right) return [
+      { id: 'basis', title: '고유함수 (양 끝 조건이 정함)', panel: 'eigen', md: String.raw`${fam.title}인 $${fam.tex}$로 전개합니다. 양 끝 조건이 다르면 반구간 사인·코사인이 아니라 이런 고유함수가 나옵니다.` },
+      { id: 'expand', title: '고유함수 전개', panel: 'modes', md: String.raw`$f(x) = \sum_{n=1}^{\infty} c_n${fam.tex}$, $c_n = \frac{2}{L}\int_0^L f(x)${fam.tex}\,dx$` },
+    ];
     return [
       { id: 'basis', title: '고유함수 (양 끝 조건이 정함)', panel: 'eigen', md: fixed
         ? String.raw`$x = 0$과 $x = L$에서 $0$이 되는 $\sin\frac{n\pi x}{L}$로 전개합니다. $(-L, 0)$으로 기함수 확장한 함수의 Fourier 급수와 같습니다.`

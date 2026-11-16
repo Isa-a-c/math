@@ -63,7 +63,7 @@ defineTopic({
   id: 'rectMembrane', eq: 'wave', domain: 'rect', look: true,
   role: () => '처음 모양의 x 방향 f(x), 0 < x < a (a = L)',
   name: () => ['12장', '직사각형 막의 진동'],
-  uses: () => ['series', 'half', 'wave', 'membrane'], params: () => ({ halfMode: 'sine', waveDomain: 'finite', waveEnds: 'fixed' }),
+  uses: () => ['series', 'half', 'wave', 'membrane'], params: () => ({ halfMode: 'sine', family: 'sine', waveDomain: 'finite', waveEnds: 'fixed' }),
   fields: () => [{ k: 'c', type: 'text', label: '파동 속도 c' }, { k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이 a는 L입니다.' }, { k: 'h', type: 'text', label: '처음 모양의 y 방향 h(y), 0 < y < b', hint: '처음 모양은 f(x)·h(y)입니다. y와 b로 씁니다.' }],
   stages: cfg => [
     { id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: String.raw`$u = F(x)G(y)H(t)$로 놓고 가장자리 고정 조건을 쓰면 $F_m = \sin\frac{m\pi x}{a}$, $G_n = \sin\frac{n\pi y}{b}$, $\lambda_{mn} = c\pi\sqrt{\frac{m^2}{a^2} + \frac{n^2}{b^2}}$입니다 ($a = L$). 그래프는 $x$ 방향 고유함수입니다.` },

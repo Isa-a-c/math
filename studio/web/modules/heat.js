@@ -22,8 +22,8 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
   compute(cfg, R, { L, f, N, X }) {
     const alpha = positive(cfg, 'alpha', '열확산계수 c²', L), tSet = optionalPositive(cfg, 'tEndHeat', '막대 끝 시간', L);
     if (cfg.heatDomain === 'finite') {
-      const left = cfg.bc === 'fixed' ? real(cfg, 'left', '왼쪽 끝 온도') : 0, right = cfg.bc === 'fixed' ? real(cfg, 'right', '오른쪽 끝 온도') : 0;
-      const model = buildPde('heat', cfg.bc, f, () => 0, { L, N, alpha, speed: 1, left, right }), tEnd = tSet ?? 3 / model.rate(1);
+      const fam = familyOf(cfg), left = fam.ends[0] === 'fixed' ? real(cfg, 'left', '왼쪽 끝 온도') : 0, right = fam.ends[1] === 'fixed' ? real(cfg, 'right', '오른쪽 끝 온도') : 0;
+      const model = modalHeat(fam, f, L, N, alpha, left, right), tEnd = tSet ?? 3 / model.rate(1);
       R.heat = { ...model, L, alpha, left, right, tEnd, range: [0, L], yr: scanRange(model.u, [0, L], [0, tEnd / 20, tEnd]) };
     } else {
       const tEnd = tSet ?? X * X / (18 * alpha), model = buildPde('heat', 'infinite', f, () => 0, { alpha, X, tEnd, speed: 1 });
@@ -44,19 +44,19 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
     }
     const [p, q] = stacked(w, h, C, .55), xr = rangeX([0, H.L], R), yr = rangeY(H.yr, R), M = axes(ctx, p, xr, yr, C, { xTicks: piTicks(xr, H.L, H.L / 4), noXLabels: true });
     curve(ctx, R.f, p, xr, M, C.muted, 1.5, [], [6, 5]);
-    const end = cfg.bc === 'fixed' ? H.steady : () => H.mean;
+    const end = H.limit;
     curve(ctx, end, p, xr, M, C.green, 2, [], [3, 4]);
     if (refH) curve(ctx, x => refH.u(x, timeOf(refH, cfg)), p, xr, M, C.green, 2.5, [], [7, 5]);
     curve(ctx, x => H.u(x, t), p, xr, M, C.hot, 3);
     spacetime(ctx, q, C, H, t);
     return { title: `막대의 온도  t = ${fmt(t, 3)} (아래: 위치·시간별 온도)`, frame: { b: p, xr, yr },
-      legend: [['--hot', uxt], ['--muted', '처음 온도', true], ['--green', cfg.bc === 'fixed' ? '정상 상태' : '평균 온도', true], ...(refH ? [pinLabel(uxt)] : [])],
-      probe: x => [['u', H.u(x, t)], [cfg.bc === 'fixed' ? '정상 상태' : '평균', end(x)]] };
+      legend: [['--hot', uxt], ['--muted', '처음 온도', true], ['--green', H.limitName, true], ...(refH ? [pinLabel(uxt)] : [])],
+      probe: x => [['u', H.u(x, t)], [H.limitName, end(x)]] };
   },
   },
   summary(cfg, R) {
     const H = R.heat, t = timeOf(H, cfg);
-    if (cfg.heatDomain === 'finite') return [['막대의 열전도', `${cfg.bc === 'fixed' ? (H.left === H.right ? `막대 전체가 ${m(fmt(H.left, 3))}으로 고르게 됩니다.` : `양 끝 ${m(fmt(H.left, 3))}, ${m(fmt(H.right, 3))}을 잇는 직선으로 갑니다.`) : `평균 온도 ${m(fmt(H.mean, 4))}로 고르게 됩니다.`} 첫 모드 감쇠율 ${m(`<i>λ</i><sub>1</sub>² = ${fmt(H.rate(1), 4)}`)}, 가운데 온도 ${m(fmt(H.u(H.L / 2, t), 4))} (${m(`<i>t</i> = ${fmt(t, 3)}`)}).`]];
+    if (cfg.heatDomain === 'finite') return [['막대의 열전도', `${H.family.id === 'sine' ? (H.left === H.right ? `막대 전체가 ${m(fmt(H.left, 3))}으로 고르게 됩니다.` : `양 끝 ${m(fmt(H.left, 3))}, ${m(fmt(H.right, 3))}을 잇는 직선으로 갑니다.`) : H.family.id === 'cosine' ? `평균 온도 ${m(fmt(H.mean, 4))}로 고르게 됩니다.` : `고정된 끝의 온도 ${m(fmt(H.limit(0), 3))}으로 고르게 됩니다.`} 첫 모드 감쇠율 ${m(`<i>λ</i><sub>1</sub>² = ${fmt(H.rate(1), 4)}`)}, 가운데 온도 ${m(fmt(H.u(H.L / 2, t), 4))} (${m(`<i>t</i> = ${fmt(t, 3)}`)}).`]];
     let peak = -Infinity; for (let i = 0; i <= 200; i++) peak = Math.max(peak, H.u(-H.X + i / 100 * H.X, t));
     return [['무한 막대', `퍼짐의 표준편차 ${m(`√(2<i>c</i>²<i>t</i>) = ${fmt(Math.sqrt(2 * H.alpha * t), 3)}`)}, 최고 온도 ${m(fmt(peak, 4))}, 전체 열량 ${m(fmt(H.total, 4))}은 그대로입니다.`]];
   },
@@ -65,12 +65,24 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
       problem(cfg, R, { Ls }) {
         const a = prettyExpr(cfg.alpha);
         if (cfg.heatDomain === 'infinite') return `무한히 긴 막대($c^2 = ${a}$)의 초기 온도가 $f(x)$일 때 $u(x,t)$를 적분 꼴로 쓰고, 시간에 따른 변화를 설명하시오.`;
+        const fam = familyOf(cfg);
+        if (fam.id === 'qsine') return `길이 $L = ${Ls}$, $c^2 = ${a}$인 막대의 $x = 0$ 끝 온도를 $U_1 = ${prettyExpr(cfg.left)}$로 유지하고 $x = L$ 끝은 단열되어 있다. 초기 온도가 $f(x)$일 때 $u(x,t)$와 도달하는 온도를 구하시오.`;
+        if (fam.id === 'qcosine') return `길이 $L = ${Ls}$, $c^2 = ${a}$인 막대의 $x = 0$ 끝은 단열되어 있고 $x = L$ 끝 온도를 $U_2 = ${prettyExpr(cfg.right)}$로 유지한다. 초기 온도가 $f(x)$일 때 $u(x,t)$와 도달하는 온도를 구하시오.`;
         if (cfg.bc === 'fixed') return `길이 $L = ${Ls}$, $c^2 = ${a}$인 막대의 양 끝 온도를 $U_1 = ${prettyExpr(cfg.left)}$, $U_2 = ${prettyExpr(cfg.right)}$로 유지한다. 초기 온도가 $f(x)$일 때 $u(x,t)$와 정상 상태를 구하시오.`;
         return `길이 $L = ${Ls}$, $c^2 = ${a}$인 막대의 양 끝이 단열되어 있다. 초기 온도가 $f(x)$일 때 $u(x,t)$와 도달하는 온도를 구하시오.`;
       },
       solution(cfg, R, { tol }) {
         const out = [], H = R.heat;
         if (cfg.heatDomain !== 'finite') { out.push(String.raw`열핵과의 합성곱 $u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp(-\frac{(x-v)^2}{4c^2 t})\,dv$` + `에 $c^2 = ${fmt(H.alpha, 4)}$를 넣습니다. 열은 표준편차 $\\sqrt{2c^2 t}$로 퍼지고, 전체 열량 ${fmt(H.total, 4)}은 변하지 않습니다.`); return out; }
+        if (H.family.id === 'qsine' || H.family.id === 'qcosine') {
+          const fam = H.family, v = x => R.f(x) - H.steady(x), Bn = firstNonzero(n => fineEigen(fam, v, R.L, n), 4, tol);
+          out.push(`한쪽 끝이 단열이어서 고유함수가 $${fam.tex}$, $k_n = ${fam.kTex}$이고 감쇠율은 $\\lambda_n^2 = c^2k_n^2$입니다. 온도는 고정된 끝의 온도 $U = ${fmt(H.limit(0), 4)}$로 고르게 됩니다.`);
+          out.push(`$$B_n = \\frac{2}{L}\\int_0^L [f(x) - U]${fam.tex}\\,dx$$`);
+          if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, fineEigen(fam, v, R.L, n)])));
+          out.push(`첫 모드가 절반으로 줄어드는 시간은 $\\ln 2/\\lambda_1^2 = ${fmt(Math.LN2 / H.rate(1), 4)}$입니다.`);
+          out.push(EXACT_NOTE);
+          return out;
+        }
         if (cfg.bc === 'fixed') {
           const v = x => R.f(x) - H.steady(x), Bn = firstNonzero(n => fineHalf(v, R.L, n, false), 4, tol);
           out.push(`정상 상태는 $U(x) = ${fmt(H.left, 4)} + ${fmt(H.right - H.left, 4)}x/L$이고, $f - U$의 반구간 사인 계수가 $B_n$입니다. 감쇠율은 $\\lambda_n^2 = c^2(n\\pi/L)^2 = ${fmt(H.rate(1), 4)}n^2$입니다.`);
@@ -88,11 +100,12 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
   },
 });
 defineTopic({
-  id: 'rod', eq: 'heat', domain: 'interval', look: true,
+  id: 'rod', eq: 'heat', domain: 'interval', look: p => p.left === p.right, mixed: true,
   ends: [['fixed', '온도 고정'], ['free', '단열']],
-  name: p => ['12장', p.left === 'fixed' ? '막대의 열전도' : '양 끝이 단열된 막대의 열전도'],
-  uses: () => ['series', 'half', 'heat'], params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', heatDomain: 'finite', bc: p.left === 'free' ? 'insulated' : 'fixed' }),
-  fields: p => [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : [])],
+  name: p => p.left !== p.right ? [null, '막대의 열전도 (한쪽 끝 단열)'] : ['12장', p.left === 'fixed' ? '막대의 열전도' : '양 끝이 단열된 막대의 열전도'],
+  uses: p => p.left === p.right ? ['series', 'half', 'heat'] : ['modes', 'heat'],
+  params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id, heatDomain: 'finite', bc: p.left !== p.right ? 'mixed' : p.left === 'free' ? 'insulated' : 'fixed' }),
+  fields: p => [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }] : []), ...(p.right === 'fixed' ? [{ k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : [])],
   stages: cfg => intervalStages(cfg, true),
 });
 defineTopic({

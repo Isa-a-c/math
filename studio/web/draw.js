@@ -63,15 +63,15 @@ const fx = '<i>f</i>(<i>x</i>)', uxt = '<i>u</i>(<i>x</i>, <i>t</i>)', pinLabel 
 /** 개념 모듈(modules/*.js)이 PANELS에 자기 그래프를 넣고, 여기서는 여러 주제가 함께 쓰는 고유함수 그래프만 넣습니다. */
 Object.assign(PANELS, {
   eigen(ctx, w, h, C, cfg, R) {
-    const p = cfg.prob ?? { domain: 'periodic', left: 'fixed' }, L = R.L, b = box(w, h, C), periodic = p.domain === 'periodic', k = n => n * PI / L;
+    const p = cfg.prob ?? { domain: 'periodic', left: 'fixed' }, fam = familyFor(p.left ?? 'fixed', p.right ?? p.left ?? 'fixed'), L = R.L, b = box(w, h, C), periodic = p.domain === 'periodic', k = n => n * PI / L;
     const name = (fn, n) => `${fn}(${n > 1 ? n : ''}π<i>x</i>/<i>L</i>)`;
     const fns = periodic ? [[name('cos', 1), x => Math.cos(k(1) * x)], [name('sin', 1), x => Math.sin(k(1) * x)], [name('cos', 2), x => Math.cos(k(2) * x)], [name('sin', 2), x => Math.sin(k(2) * x)]]
-      : p.left === 'fixed' ? [1, 2, 3, 4].map(n => [name('sin', n), x => Math.sin(k(n) * x)]) : [0, 1, 2, 3].map(n => [n ? name('cos', n) : '1', x => Math.cos(k(n) * x)]);
+      : [0, 1, 2, 3].map(i => fam.n0 + i).map(n => [fam.label(n), x => fam.phi(n, x, L)]);
     const xr = rangeX(periodic ? [-L, L] : [0, L], R), yr = rangeY([-1.35, 1.35], R), M = axes(ctx, b, xr, yr, C, { xTicks: piTicks(xr, L) });
     const colors = [C.blue, C.hot, C.green, C.muted], vars = ['--blue', '--hot', '--green', '--muted'];
     fns.forEach(([, fn], i) => curve(ctx, fn, b, xr, M, colors[i], i ? 2 : 3));
-    if (!periodic && p.left === 'fixed') for (const x0 of [0, L]) dot(ctx, M.X(x0), M.Y(0), C.ink, C, 5);
-    const title = periodic ? '기저 함수 (한 주기에서 직교)' : p.domain === 'rect' ? 'x 방향 고유함수 (가장자리 고정)' : p.left === 'fixed' ? '고유함수: 양 끝에서 값이 0 (고정)' : '고유함수: 양 끝에서 기울기 0 (자유·단열)';
+    if (!periodic) fam.ends.forEach((e, i) => { if (e === 'fixed') dot(ctx, M.X(i ? L : 0), M.Y(0), C.ink, C, 5); });
+    const title = periodic ? '기저 함수 (한 주기에서 직교)' : p.domain === 'rect' ? 'x 방향 고유함수 (가장자리 고정)' : `고유함수: ${fam.title}`;
     return { title, frame: { b, xr, yr }, legend: fns.map(([n], i) => [vars[i], n]), probe: x => fns.map(([n, fn]) => [n.replace(/<[^>]+>/g, ''), fn(x)]) };
   },
 });

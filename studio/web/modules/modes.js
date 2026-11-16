@@ -1,0 +1,46 @@
+'use strict';
+/* 개념 모듈: 고유함수 전개(일반화된 Fourier 급수). 양 끝 조건이 다를 때(혼합 경계) 전개 단계가 이 모듈을 씁니다.
+   고유함수 종류는 eigen.js의 FAMILIES에서 오므로, 새 종류를 더해도 이 파일은 그대로입니다. */
+defineConcept({
+  id: 'modes', ch: '11장', title: '고유함수 전개 (일반화된 Fourier 급수)',
+  markup: String.raw`양 끝 조건이 다르면(한쪽은 값이 $0$, 다른 쪽은 기울기가 $0$) 고유값 문제 $F'' + k^2F = 0$의 해가 $\sin\frac{(2n-1)\pi x}{2L}$ 또는 $\cos\frac{(2n-1)\pi x}{2L}$가 됩니다. 이 고유함수들도 $(0, L)$에서 서로 직교하므로 Fourier 급수와 같은 방법으로 계수를 구합니다(Sturm–Liouville 문제, 일반화된 Fourier 급수).
+
+$$f(x) = \sum_{n=1}^{\infty} c_n\varphi_n(x),\quad c_n = \frac{\int_0^L f\varphi_n\,dx}{\int_0^L \varphi_n^2\,dx} = \frac{2}{L}\int_0^L f(x)\varphi_n(x)\,dx$$
+
+> 경계조건이 고유함수를 정하고, 고유함수가 전개의 모양을 정합니다. 반구간 사인·코사인 전개는 양 끝 조건이 같은 경우입니다.`,
+  compute(cfg, R, { L, f, N }) {
+    const fam = familyOf(cfg), c = eigenCoefficients(fam, f, L, Math.max(N, 30));
+    let err = 0; const q = 800, h = L / q;
+    for (let i = 0; i < q; i++) { const x = (i + .5) * h; err += (f(x) - eigenSum(fam, c, L, N, x)) ** 2 * h; }
+    R.modes = { fam, c, L, err, partial: x => eigenSum(fam, c, L, N, x) };
+  },
+  panels: {
+    modes(ctx, w, h, C, cfg, R) {
+      const Md = R.modes, fam = Md.fam, L = Md.L, [p, q] = stacked(w, h, C, .62), xr = rangeX([0, L], R);
+      let lo = 0, hi = 0; for (let i = 0; i <= 200; i++) { const x = i / 200 * L, a = R.f(x), b = Md.partial(x); lo = Math.min(lo, a, b); hi = Math.max(hi, a, b); }
+      const pad = Math.max(.1, .15 * (hi - lo)), yr = rangeY([lo - pad, hi + pad], R), M = axes(ctx, p, xr, yr, C, { xTicks: piTicks(xr, L, L / 4) });
+      curve(ctx, R.f, p, xr, M, C.ink, 2.5);
+      curve(ctx, Md.partial, p, xr, M, C.blue, 3);
+      bars(ctx, q, C, [[C.blue, n => Md.c[n]]], cfg.N);
+      panelText(ctx, '아래: 계수 cₙ', q.l + q.w - 6, q.t + 2, C, 'right');
+      return { title: `고유함수 ${fam.plain}로 전개 (${fam.title})`, frame: { b: p, xr, yr },
+        legend: [['--ink', '<i>f</i>(<i>x</i>)'], ['--blue', `<i>S</i><sub>${cfg.N}</sub> = Σ <i>c<sub>n</sub></i>φ<sub><i>n</i></sub>`]],
+        probe: x => [['f', R.f(x)], [`S${cfg.N}`, Md.partial(x)]] };
+    },
+  },
+  summary(cfg, R) {
+    const Md = R.modes, first = [1, 2, 3].map(n => `c${n} ≈ ${fmt(Md.c[n], 4)}`).join(', ');
+    return [['고유함수 전개', `고유함수 ${m(Md.fam.plain)}(${Md.fam.title})로 전개했습니다. ${m(first)}, 항 ${cfg.N}개의 제곱오차 ${m(`∫(<i>f</i> − <i>S<sub>N</sub></i>)² = ${errText(Md.err)}`)}`]];
+  },
+  items: {
+    modes: { label: '고유함수 전개', auto: true,
+      problem: (cfg, R, { Ls }) => `${fMarkup(cfg)}를 $0 < x < L$ ($L = ${Ls}$)에서 고유함수 $${familyOf(cfg).tex}$ ($n = 1, 2, \\ldots$)로 전개하시오.`,
+      solution(cfg, R, { tol }) {
+        const fam = familyOf(cfg), cs = firstNonzero(n => fineEigen(fam, R.f, R.L, n), 4, tol);
+        const out = [`고유함수 $${fam.tex}$는 $(0, L)$에서 서로 직교하고 $\\int_0^L \\varphi_n^2\\,dx = L/2$이므로`, `$$c_n = \\frac{2}{L}\\int_0^L f(x)${fam.tex}\\,dx$$`];
+        if (cs.length) out.push(valueEq('c', cs.map(n => [n, fineEigen(fam, R.f, R.L, n)])));
+        out.push(EXACT_NOTE);
+        return out;
+      } },
+  },
+});

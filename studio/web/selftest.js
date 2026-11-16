@@ -13,6 +13,7 @@ window.STUDIO_SELFTEST = () => {
   // 예전 설정 이름(on, halfMode, waveDomain…)으로 바꾸면 문제를 다시 읽습니다.
   const set = patch => { Object.assign(S.cfg, patch); if (['on', 'halfMode', 'waveDomain', 'waveEnds', 'heatDomain', 'bc', 'damping'].some(k => k in patch)) S.cfg.prob = problemFromOn(S.cfg); renderSettings(); recompute(); draw(); };
   const prob = (key, value) => { document.querySelector(`[data-prob="${key}"][data-value="${value}"]`).click(); draw(); };
+  const ends = v => { prob('left', v); prob('right', v); };
   const look = v => { document.querySelector(`[data-look="${v}"]`).click(); draw(); };
   const stage = id => { document.querySelector(`[data-stage="${id}"]`).click(); draw(); };
   const AX0 = { rep: 'series', look: 'partial', time: 'none', bound: 'fixed', dim: '1', damp: 'off' };   // v0.14~0.17 저장 파일의 축
@@ -32,9 +33,9 @@ window.STUDIO_SELFTEST = () => {
   look('partial');
   prob('domain', 'interval'); check(onList() === 'series,half' && S.cfg.halfMode === 'sine' && recipe().includes('반구간 전개 (사인') && $('baseFields').textContent.includes('0 < x < L') && $('status').textContent.includes('f(x)는 이제'), '구간 (0, L): 양 끝 조건이 사인 급수를 정하고, f의 뜻을 알림');
   stage('basis'); check(S.frames.eigen.probe(0).every(([, v]) => Math.abs(v) < 1e-12), '양 끝 고정의 고유함수는 끝에서 0');
-  prob('ends', 'free'); stage('basis'); check(S.cfg.halfMode === 'cosine' && recipe().includes('코사인') && S.frames.eigen.probe(0).every(([, v]) => near(v, 1, 1e-12)), '양 끝 기울기 0: 코사인 급수');
+  ends('free'); stage('basis'); check(S.cfg.halfMode === 'cosine' && recipe().includes('코사인') && S.frames.eigen.probe(0).every(([, v]) => near(v, 1, 1e-12)), '양 끝 기울기 0: 코사인 급수');
   prob('eq', 'wave'); check(onList() === 'series,half,wave' && cards() === 3 && shown() === 'wave' && !$('transport').hidden && recipe().includes('응용') && !!$('f_c') && !!$('f_g') && $('baseFields').textContent.includes('초기 변위'), '파동 방정식: 단계 3개, 자유 끝은 응용');
-  prob('ends', 'fixed'); check(recipe().includes('12장') && recipe().includes('현의 진동') && S.cfg.halfMode === 'sine', '파동 + 구간 + 고정 = 12장 현의 진동');
+  ends('fixed'); check(recipe().includes('12장') && recipe().includes('현의 진동') && S.cfg.halfMode === 'sine', '파동 + 구간 + 고정 = 12장 현의 진동');
   stage('separate'); check(shown() === 'eigen' && active() === 'separate' && $('stageBar').textContent.includes('변수분리') && box().textContent.includes('경계조건'), '변수분리와 고유값 문제 단계');
   document.querySelector('#stageBar [data-stage="solve"]').click(); draw(); check(shown() === 'wave' && $$('#stageBar [data-stage]').length === 3 && document.querySelector('#stageBar [aria-pressed="true"]').dataset.stage === 'solve' && $('stageBar').textContent.includes('현의 진동'), '그래프 위 단계 줄로 단계 바꾸기');
   stage('expand'); look('spectrum'); check(shown() === 'spectrum' && S.cfg.on.wave && S.cfg.on.spectrum, '초기 변위의 계수 크기');
@@ -42,7 +43,7 @@ window.STUDIO_SELFTEST = () => {
   prob('domain', 'rect'); check(S.cfg.on.membrane && shown() === 'membrane' && S.cfg.damping === '0' && !!$('f_b') && !!$('f_h') && recipe().includes('직사각형 막'), '직사각형: 막');
   $('undoBtn').click(); draw(); check(S.cfg.prob.domain === 'interval' && S.cfg.prob.damp && shown() === 'wave', '문제 바꾸기 되돌리기');
   prob('eq', 'heat'); check(S.cfg.on.heat && shown() === 'heat' && recipe().includes('막대의 열전도') && !!$('f_left') && !!$('f_alpha') && $('baseFields').textContent.includes('초기 온도'), '열 방정식');
-  prob('ends', 'free'); check(S.cfg.bc === 'insulated' && !$('f_left') && recipe().includes('단열'), '단열 막대');
+  ends('free'); check(S.cfg.bc === 'insulated' && !$('f_left') && recipe().includes('단열'), '단열 막대');
   const rectBtn = document.querySelector('[data-prob="domain"][data-value="rect"]');
   check(rectBtn.disabled && rectBtn.title.includes('파동'), '열 방정식에는 직사각형이 비활성이고 이유를 보여 줌');
   prob('domain', 'line'); check(S.cfg.heatDomain === 'infinite' && S.cfg.on.transform && cards() === 2 && recipe().includes('열핵') && shown() === 'heat', '무한히 긴 막대: Fourier 적분 → 해');
@@ -53,20 +54,35 @@ window.STUDIO_SELFTEST = () => {
   prob('eq', 'wave'); check(S.cfg.prob.domain === 'interval' && $('status').textContent.includes('영역을'), '주기 영역에서 파동을 고르면 구간으로 바꾸고 알림');
   const legacy = mergeCfg({ on: { series: true, half: true, heat: true }, bc: 'insulated' }), legacy2 = mergeCfg({ axes: { ...AX0, time: 'wave', dim: '2' } });
   check(legacy.prob.eq === 'heat' && legacy.prob.domain === 'interval' && legacy.prob.left === 'free' && legacy.halfMode === 'cosine' && legacy2.prob.domain === 'rect' && legacy2.on.membrane, '예전 저장 파일(개념 체크, 축)도 문제로 읽음');
+  check(tex("F'' + k^2F").h.includes('″') && tex("q_n'").h.includes('′'), '수식의 이계도함수 F″가 F′처럼 보이지 않음');
+  // 혼합 경계: 고유함수 엔진(종류 표 한 줄)으로 풂
+  reset({ f: 'sin(pi*x/(2*L))', L: '1', c: '1', N: 20, prob: { eq: 'wave', domain: 'interval', left: 'fixed', right: 'fixed' } });
+  prob('right', 'free'); stage('separate');
+  check(S.cfg.family === 'qsine' && near(S.frames.eigen.probe(0)[0][1], 0, 1e-12) && recipe().includes('응용') && recipe().includes('한쪽 끝 자유') && box().textContent.includes('2L'), '현: x = L 끝 자유 → 고유함수 sin((2n−1)πx/2L)');
+  stage('solve'); check(near(S.R.wave.u(1, 0), 1, 1e-6) && near(S.R.wave.u(.5, 2), -Math.sin(PI / 4), 1e-6) && near(S.R.wave.T, 4, 1e-12) && shown() === 'wave', '혼합 경계 현: 첫 모드 cos(πt/2), 주기 4L/c');
+  stage('expand'); check(shown() === 'modes' && painted() && !box().querySelector('[data-look]') && S.cfg.on.modes && !S.cfg.on.series, '혼합 경계의 전개 단계는 고유함수 전개(일반화된 Fourier 급수)');
+  check(autoItems(S.good).map(it => it.kind).join(',') === 'modes,wave' && solutionText('wave', S.good, S.R).includes('(2n-1)') && problemText('wave', S.good, S.R).includes('자유롭게'), '혼합 경계 현의 자동 문장·풀이');
+  prob('eq', 'heat'); set({ alpha: '1', left: '0' });
+  check(S.cfg.family === 'qsine' && near(S.R.heat.u(.5, .2), Math.exp(-((PI / 2) ** 2) * .2) * Math.sin(PI / 4), 1e-6) && recipe().includes('한쪽 끝 단열') && !!$('f_left') && !$('f_right'), '막대: x = L 끝 단열 → e^(−(π/2)²t)');
+  prob('left', 'free'); prob('right', 'fixed'); set({ f: '10', right: '10' });
+  check(S.cfg.family === 'qcosine' && near(S.R.heat.u(.3, 1), 10, 1e-6) && near(S.R.heat.limit(0), 10, 1e-12) && !$('f_left') && !!$('f_right'), '막대: x = 0 끝 단열, x = L 끝 10도');
+  prob('eq', 'none'); set({ f: 'x', N: 60 });
+  check(shown() === 'modes' && near(S.R.modes.partial(.5), .5, 2e-2) && recipe().includes('고유함수 전개') && problemText('modes', S.good, S.R).includes('2L'), '방정식 없음 + 혼합 경계: 고유함수 전개');
+  reset({});
   // 문제를 바꾸면 계산값이 교재 값으로 바뀌는지 (삼각형 f, L = π)
   reset({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 200, c: '1', alpha: '1' }); const b1Full = S.R.series.b[1];
   prob('domain', 'interval'); const b1Half = fineCoef(S.R.series, 'b', 1);
   check(near(b1Half, 4 / PI, 1e-6) && Math.abs(b1Full - b1Half) > 1e-3 && S.R.series.a.every(v => Math.abs(v) < 1e-9), '구간 (0, L), 양 끝 0: b₁ = 4/π, aₙ = 0');
   prob('eq', 'wave'); check(near(S.R.wave.u(PI / 2, PI), -PI / 2, 1e-2) && near(S.R.wave.u(PI / 2, 2 * PI), PI / 2, 1e-2), '파동: t = π에서 뒤집히고 2π에서 돌아옴');
-  prob('eq', 'heat'); prob('ends', 'free'); set({ f: 'x' });
+  prob('eq', 'heat'); ends('free'); set({ f: 'x' });
   check(near(S.R.heat.u(0, 1), PI / 2 - 4 / PI * Math.exp(-1) - 4 / (9 * PI) * Math.exp(-9), 1e-4) && near(S.R.heat.u(1, 60), PI / 2, 1e-6), '열 + 단열: 교재 해와 평균 π/2');
   prob('eq', 'wave'); prob('domain', 'rect'); check(shown() === 'membrane' && near(S.R.membrane.u(PI / 2, .5, 0), PI / 4, .1), '직사각형 막: t = 0에서 f(x)h(y)');
   prob('domain', 'interval'); prob('damp', 'on'); set({ f: 'sin(x)', kDamp: '0.5' }); const mu2 = Math.sqrt(1 - .25);
   check(near(S.R.wave.u(PI / 2, 1), Math.exp(-.5) * (Math.cos(mu2) + .5 / mu2 * Math.sin(mu2)), 1e-6), '감쇠: e^(−kt) 감쇠 진동');
   // 풀 수 있는 모든 문제에서 단계·자동 문장·풀이가 만들어지는지
   { const seen = new Set(), bad3 = [];
-    for (const e of EQUATIONS) for (const d of DOMAINS) if (domainOk(e.id, d.id)) for (const end of ['fixed', 'free']) for (const damp of [false, true]) for (const lk of LOOKS.map(l => l[0])) {
-      const cfg = mergeCfg({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, prob: { eq: e.id, domain: d.id, left: end, right: end, damp }, look: lk, kDamp: '0.2' }), key = JSON.stringify(cfg.on) + JSON.stringify(cfg.prob);
+    for (const e of EQUATIONS) for (const d of DOMAINS) if (domainOk(e.id, d.id)) for (const l of ['fixed', 'free']) for (const r of ['fixed', 'free']) for (const damp of [false, true]) for (const lk of LOOKS.map(l => l[0])) {
+      const cfg = mergeCfg({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, prob: { eq: e.id, domain: d.id, left: l, right: r, damp }, look: lk, kDamp: '0.2' }), key = JSON.stringify(cfg.on) + JSON.stringify(cfg.prob);
       if (seen.has(key)) continue;
       seen.add(key);
       try {
@@ -123,7 +139,7 @@ window.STUDIO_SELFTEST = () => {
   set({ f: 'sin(pi*x/L)', waveDomain: 'infinite', X: '8' }); set({ f: 'exp(-x^2)', c: '1' }); check(near(S.R.wave.u(5, 5), .5, 1e-6), '무한히 긴 현: 절반씩 나뉨');
   reset({ f: 'sin(pi*x/L)', L: 'pi', alpha: '1', N: 10, on: { heat: true } }); check(near(S.R.heat.u(PI / 2, 1), Math.exp(-1), 1e-4) && $('settings').textContent.includes('열확산계수 c²'), '막대: e^(−λ²t) 감쇠, c² 표기');
   set({ left: '10', right: '30' }); check(near(S.R.heat.u(PI / 2, 40), 20, 1e-3), '정상 상태는 직선');
-  prob('ends', 'free'); set({ f: '10' }); check(S.cfg.halfMode === 'cosine' && !$('f_left') && near(S.R.heat.u(1, 5), 10, 1e-6), '단열: 코사인 전개와 평균');
+  ends('free'); set({ f: '10' }); check(S.cfg.halfMode === 'cosine' && !$('f_left') && near(S.R.heat.u(1, 5), 10, 1e-6), '단열: 코사인 전개와 평균');
   set({ f: 'x<L/2 ? x : L-x', bc: 'fixed', left: 'abc' }); check(!$('err').hidden && $('err').textContent.includes('왼쪽'), '잘못된 끝 온도 안내'); set({ left: '0', right: '0' });
   set({ heatDomain: 'infinite', f: 'exp(-x^2)', X: '6' }); check(near(S.R.heat.u(0, 1), 1 / Math.sqrt(5), 1e-3) && near(S.R.heat.total, Math.sqrt(PI), 1e-3) && text().includes('c²'), '무한 막대: 닫힌 해, 전체 열량, c² 표기');
   // 재생

@@ -11,7 +11,7 @@ const DEFAULTS = {
   look: 'partial', stage: null,   // 전개 단계에서 볼 그래프, 그래프로 보는 풀이 단계(null이면 마지막 단계)
   on: Object.fromEntries(CONCEPTS.map(c => [c.id, c.id === 'series'])),   // 쓰는 개념 모듈(주제가 정함)
   fMode: 'single', pieces: [],   // 구간별 입력이면 pieces로 f를 만듭니다.
-  coefKind: 'b', coefN: 1, halfMode: 'sine',
+  coefKind: 'b', coefN: 1, halfMode: 'sine', family: 'sine',   // family: 구간의 고유함수 종류(eigen.js)
   waveDomain: 'finite', g: '0', c: '1',
   heatDomain: 'finite', alpha: '0.1', bc: 'fixed', left: '0', right: '0',   // alpha는 교재의 c²(열확산계수)입니다.
   X: '8', s: 0,
@@ -257,7 +257,7 @@ function piecesOf(text) {
   return out;
 }
 const piecesExpr = pieces => pieces.slice(0, -1).reduceRight((rest, p) => `x<${p.until} ? ${p.expr} : ${rest}`, pieces.at(-1).expr);
-const halfDomain = cfg => cfg.on.half || needsHalf(cfg);
+const halfDomain = cfg => cfg.on.half || cfg.on.modes || needsHalf(cfg);
 const toPieces = (f, cfg) => { const p = piecesOf(f); return p && p.length > 1 ? p : [{ until: halfDomain(cfg) ? 'L/2' : '0', expr: f }, { until: null, expr: f }]; };
 /** 함수를 문서용 글로 씁니다. 구간별이면 구간마다 식과 범위를 씁니다. */
 function fMarkup(cfg) {

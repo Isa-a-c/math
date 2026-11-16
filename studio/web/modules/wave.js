@@ -25,8 +25,7 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
     if (k < 0) throw new Error('감쇠 k: 0 이상이어야 합니다.');
     if (cfg.waveDomain === 'finite') boundedOn(g, 0, L, '초기 속도 g(x)'); else boundedOn(g, -X, X, '초기 속도 g(x)');
     if (cfg.waveDomain === 'finite') {
-      const free = cfg.waveEnds === 'free', T = 2 * L / speed, times = [];
-      const model = free || k > 0 ? stringModel(f, g, L, N, speed, k, free) : buildPde('wave', 'fixed', f, g, { L, N, speed, alpha: 1 });
+      const fam = familyOf(cfg), model = modalWave(fam, f, g, L, N, speed, k), T = 2 * PI / model.omega(1), free = fam.ends.includes('free'), times = [];
       const tEnd = tSet ?? 2 * T;
       for (let i = 0; i <= 40; i++) times.push(i / 40 * tEnd);
       R.wave = { ...model, L, speed, T, g, tEnd, damping: k, free, yr: scanRange(model.u, [0, L], times) };
@@ -44,7 +43,7 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
     const refW = ref?.R.wave;
     if (refW) curve(ctx, x => refW.u(x, timeOf(refW, cfg)), b, xr, M, C.green, 2.5, [], [7, 5]);
     curve(ctx, x => W.u(x, t), b, xr, M, C.blue, 3, [], null, finite ? 1 : 2);
-    return { title: finite ? `현의 진동${W.free ? '(자유 끝)' : ''}${W.damping > 0 ? `(감쇠 k = ${fmt(W.damping, 3)})` : ''}  t = ${fmt(t, 3)}` : `무한히 긴 현  t = ${fmt(t, 3)}`, frame: { b, xr, yr },
+    return { title: finite ? `현의 진동${{ sine: '', cosine: '(자유 끝)', qsine: '(x = L 끝 자유)', qcosine: '(x = 0 끝 자유)' }[W.family.id]}${W.damping > 0 ? `(감쇠 k = ${fmt(W.damping, 3)})` : ''}  t = ${fmt(t, 3)}` : `무한히 긴 현  t = ${fmt(t, 3)}`, frame: { b, xr, yr },
       legend: [['--blue', uxt], ['--muted', '처음 모양', true], ...(!finite && W.restWave ? [['--hot', '오른쪽 파동', true], ['--green', '왼쪽 파동', true]] : []), ...(refW ? [pinLabel(uxt)] : [])],
       probe: x => [['u', W.u(x, t)], ['처음', R.f(x)]] };
   },
@@ -52,29 +51,30 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
   summary(cfg, R) {
     const out = [], W = R.wave, t = timeOf(W, cfg);
     if (cfg.waveDomain === 'finite') {
-      const ends = Math.max(Math.abs(R.f(0)), Math.abs(R.f(R.L)));
-      out.push(['현의 진동', `주기 ${m(`2<i>L</i>/<i>c</i> = ${fmt(W.T, 4)}`)}, 기본 각진동수 ${m(`<i>λ</i><sub>1</sub> = ${coefText(W.omega(1))}`)}. 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.${ends > 1e-6 ? ' 초기 변위가 양 끝에서 0이 아니어서 끝점 부근에서 급수가 함수와 다릅니다.' : ''}`]);
+      const ends = Math.max(W.family.ends[0] === 'fixed' ? Math.abs(R.f(0)) : 0, W.family.ends[1] === 'fixed' ? Math.abs(R.f(R.L)) : 0);
+      out.push(['현의 진동', `주기 ${m(`<i>T</i> = 2π/<i>λ</i><sub>1</sub> = ${fmt(W.T, 4)}`)}, 기본 각진동수 ${m(`<i>λ</i><sub>1</sub> = ${coefText(W.omega(1))}`)}. 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.${ends > 1e-6 ? ' 초기 변위가 양 끝에서 0이 아니어서 끝점 부근에서 급수가 함수와 다릅니다.' : ''}`]);
     } else out.push(['무한히 긴 현', `초기 모양이 절반씩 나뉘어 속도 ${m(fmt(W.speed, 3))}로 양쪽으로 갑니다. 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.`]);
     if (W.damping > 0) out.push(['감쇠', `모드마다 ${m('<i>e</i><sup>−<i>kt</i></sup>')}로 줄어듭니다(k = ${fmt(W.damping, 3)}). ${W.damping < W.omega(1) ? '진동하면서 줄어듭니다.' : '첫 모드부터 진동하지 않고 줄어듭니다(과감쇠).'}`]);
-    if (W.free) out.push(['자유 끝', '양 끝이 자유로워 모드가 cos(nπx/L)이고, 평균 높이(0번 모드)는 그대로 유지됩니다.']);
+    if (W.free) out.push(['자유 끝', W.family.id === 'cosine' ? '양 끝이 자유로워 모드가 cos(nπx/L)이고, 평균 높이(0번 모드)는 그대로 유지됩니다.' : `한쪽 끝이 자유로워 모드가 ${W.family.plain}이고, 기본 진동수가 양 끝 고정일 때의 절반(주기 4L/c)입니다.`]);
     return out;
   },
   items: {
     wave: { label: '현의 해', auto: true,
       problem(cfg, R, { Ls }) {
         const g = prettyExpr(cfg.g, cfg.params), cs = prettyExpr(cfg.c);
-        const extra = `${cfg.waveEnds === 'free' ? ' 양 끝은 자유롭게 움직인다($u_x = 0$).' : ''}${+cfg.damping > 0 ? ` 감쇠 계수는 $k = ${prettyExpr(cfg.damping)}$이다($u_{tt} + 2ku_t = c^2u_{xx}$).` : ''}`;
-        return cfg.waveDomain === 'finite' ? `길이 $L = ${Ls}$, 파동 속도 $c = ${cs}$인 현${cfg.waveEnds === 'free' ? '' : '의 양 끝이 고정되어 있다'}.${extra} 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 변위 $u(x,t)$를 구하시오.`
+        const fam = familyOf(cfg), ends = { sine: '의 양 끝이 고정되어 있다', cosine: '의 양 끝이 자유롭게 움직인다($u_x = 0$)', qsine: '의 $x = 0$ 끝은 고정되어 있고 $x = L$ 끝은 자유롭게 움직인다($u_x(L,t) = 0$)', qcosine: '의 $x = 0$ 끝은 자유롭게 움직이고($u_x(0,t) = 0$) $x = L$ 끝은 고정되어 있다' }[fam.id];
+        const extra = `${+cfg.damping > 0 ? ` 감쇠 계수는 $k = ${prettyExpr(cfg.damping)}$이다($u_{tt} + 2ku_t = c^2u_{xx}$).` : ''}`;
+        return cfg.waveDomain === 'finite' ? `길이 $L = ${Ls}$, 파동 속도 $c = ${cs}$인 현${ends}.${extra} 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 변위 $u(x,t)$를 구하시오.`
           : `무한히 긴 현($c = ${cs}$)의 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 $u(x,t)$를 구하시오.`;
       },
       solution(cfg, R, { tol }) {
         const out = [], W = R.wave;
         if (cfg.waveDomain !== 'finite') { out.push(String.raw`D’Alembert 해 $u = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$` + `에 $c = ${fmt(W.speed, 3)}$을 넣습니다. 초기 모양의 절반이 속도 ${fmt(W.speed, 3)}로 오른쪽과 왼쪽으로 이동하며, 모양은 변하지 않습니다.`); return out; }
         if (W.free || W.damping > 0) {
-          const cos = W.free, Bn = firstNonzero(n => fineHalf(R.f, R.L, n, cos), 4, tol);
-          out.push(`변수분리로 $\\lambda_n = cn\\pi/L = ${coefText(W.omega(1))}n$입니다. ${cos ? '양 끝이 자유로워($u_x = 0$) 모드가 $\\cos\\frac{n\\pi x}{L}$이고, 계수는 초기 변위의 반구간 코사인 계수입니다. 평균 높이 $A_0$은 그대로 남습니다.' : '계수는 초기 변위의 반구간 사인 계수입니다.'}`);
-          if (cos) { const e0 = exact(fineHalf(R.f, R.L, 0, true)); out.push(`$$A_0 ${rel(e0)} ${e0.text}$$`); }
-          if (Bn.length) out.push(valueEq(cos ? 'A' : 'B', Bn.map(n => [n, fineHalf(R.f, R.L, n, cos)])));
+          const fam = W.family, c0 = fam.n0 === 0, Bn = firstNonzero(n => fineEigen(fam, R.f, R.L, n), 4, tol);
+          out.push(`변수분리로 고유함수 $${fam.tex}$, $k_n = ${fam.kTex}$, $\lambda_n = ck_n$입니다($\lambda_1 = ${coefText(W.omega(1))}$). 계수는 초기 변위를 이 고유함수로 전개한 계수입니다.${c0 ? ' 양 끝이 자유로워 평균 높이 $A_0$은 그대로 남습니다.' : ''}`);
+          if (c0) { const e0 = exact(fineEigen(fam, R.f, R.L, 0)); out.push(`$$A_0 ${rel(e0)} ${e0.text}$$`); }
+          if (Bn.length) out.push(valueEq(c0 ? 'A' : 'B', Bn.map(n => [n, fineEigen(fam, R.f, R.L, n)])));
           if (W.damping > 0) out.push(`감쇠가 있으면 각 모드의 시간 부분이 $q_n'' + 2kq_n' + \\lambda_n^2 q_n = 0$을 따릅니다. $k = ${fmt(W.damping, 4)}$${W.damping < W.omega(1) ? `이 $\\lambda_1$보다 작으므로 $q_n = e^{-kt}(B_n\\cos\\mu_n t + \\frac{kB_n}{\\mu_n}\\sin\\mu_n t)$, $\\mu_n = \\sqrt{\\lambda_n^2 - k^2}$입니다(처음 속도 0일 때).` : '이 $\\lambda_1$ 이상이어서 낮은 모드는 진동하지 않고 줄어듭니다(과감쇠).'}`);
           out.push(EXACT_NOTE);
           return out;
@@ -94,10 +94,11 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
 });
 const WAVE_FIELDS = p => [{ k: 'c', type: 'text', label: '파동 속도 c' }, ...(p.damp ? [{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }] : []), { k: 'g', type: 'text', label: '초기 속도 g(x) = uₜ(x, 0)', hint: '0이면 정지 상태에서 시작합니다.' }];
 defineTopic({
-  id: 'string', eq: 'wave', domain: 'interval', look: true, damp: true,
+  id: 'string', eq: 'wave', domain: 'interval', look: p => p.left === p.right, damp: true, mixed: true,
   ends: [['fixed', '고정'], ['free', '자유']],
-  name: p => p.left === 'fixed' && !p.damp ? ['12장', '현의 진동'] : [null, `현의 진동 (${[p.left === 'free' ? '양 끝 자유' : '', p.damp ? '감쇠' : ''].filter(Boolean).join(', ')})`],
-  uses: () => ['series', 'half', 'wave'], params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', waveDomain: 'finite', waveEnds: p.left }),
+  name: p => p.left === 'fixed' && p.right === 'fixed' && !p.damp ? ['12장', '현의 진동'] : [null, `현의 진동 (${[p.left !== p.right ? '한쪽 끝 자유' : p.left === 'free' ? '양 끝 자유' : '', p.damp ? '감쇠' : ''].filter(Boolean).join(', ')})`],
+  uses: p => p.left === p.right ? ['series', 'half', 'wave'] : ['modes', 'wave'],
+  params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id, waveDomain: 'finite', waveEnds: p.left === p.right ? p.left : 'mixed' }),
   fields: WAVE_FIELDS,
   stages: cfg => intervalStages(cfg, false),
 });

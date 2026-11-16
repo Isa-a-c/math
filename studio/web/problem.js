@@ -27,13 +27,13 @@ const recipeOf = cfg => topicOf(cfg).name(cfg.prob);
 const recipeText = cfg => { const [ch, name] = recipeOf(cfg); return `${ch ?? '응용'} · ${name}`; };
 /** 입력한 f(x)의 뜻과 구간입니다. 문제를 바꾸면 화면에 함께 바뀝니다. */
 const roleOf = cfg => topicOf(cfg).role?.(cfg.prob) ?? `${EQUATIONS.find(e => e.id === cfg.prob.eq).role}, ${DOMAINS.find(d => d.id === cfg.prob.domain).where}`;
-/** 풀 수 없는 조합을 고칩니다: 방정식에 없는 영역은 구간으로, 양 끝·감쇠는 주제가 허락할 때만. 양 끝은 같은 조건(혼합 경계는 아직 없음). */
+/** 풀 수 없는 조합을 고칩니다: 방정식에 없는 영역은 구간으로, 양 끝·감쇠는 주제가 허락할 때만(양 끝이 다른 조건은 mixed인 주제만). */
 function normalizeProblem(p) {
   if (!EQUATIONS.some(e => e.id === p.eq)) p.eq = 'none';
   if (!domainOk(p.eq, p.domain)) p.domain = domainOk(p.eq, 'interval') ? 'interval' : TOPICS.find(t => t.eq === p.eq).domain;
   const t = topicFor(p.eq, p.domain);
-  if (p.left !== 'free' || !t.ends) p.left = 'fixed';
-  p.right = p.left;
+  for (const k of ['left', 'right']) if (p[k] !== 'free' || !t.ends) p[k] = 'fixed';
+  if (!t.mixed) p.right = p.left;
   p.damp = !!p.damp && !!t.damp;
   return p;
 }
@@ -41,7 +41,8 @@ function normalizeProblem(p) {
 function applyProblem(cfg) {
   const p = normalizeProblem(cfg.prob), t = topicFor(p.eq, p.domain), on = cfg.on;
   for (const k of Object.keys(on)) on[k] = false;
-  for (const id of [...t.uses(p), ...(t.look ? LOOK_USES[cfg.look] ?? [] : [])]) on[id] = true;
+  const look = typeof t.look === 'function' ? t.look(p) : t.look;
+  for (const id of [...t.uses(p), ...(look ? LOOK_USES[cfg.look] ?? [] : [])]) on[id] = true;
   Object.assign(cfg, t.params(p));
   cfg.damping = p.damp ? String(cfg.kDamp) : '0';
   return cfg;
@@ -76,20 +77,19 @@ function problemFromAxes(ax, cfg) {
 /** 전개 단계에서 고른 그래프입니다. */
 const lookPanel = cfg => ({ coef: 'coef', spectrum: 'spectrum', gibbs: 'gibbs' }[cfg.look] ?? 'series');
 const INTEGRAL_MD = String.raw`$f(x) = \int_0^{\infty}[A(w)\cos wx + B(w)\sin wx]\,dw$, $A(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\cos wv\,dv$, $B(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\sin wv\,dv$`;
-/** 구간 (0, L)의 파동·열: 변수분리와 고유값 문제 → 초기조건의 전개 → 해. */
+/** 구간 (0, L)의 파동·열: 변수분리와 고유값 문제 → 초기조건의 전개 → 해. 수식은 양 끝 조건이 정한 고유함수 종류에서 만듭니다. */
 function intervalStages(cfg, heat) {
-  const p = cfg.prob, fixed = p.left === 'fixed', look = lookPanel(cfg), out = [];
-  const phi = fixed ? String.raw`\sin\frac{n\pi x}{L}` : String.raw`\cos\frac{n\pi x}{L}`;
-  const bc = fixed ? (heat ? String.raw`u(0,t) = U_1,\ u(L,t) = U_2` : String.raw`u(0,t) = u(L,t) = 0`) : String.raw`u_x(0,t) = u_x(L,t) = 0`;
-  out.push({ id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: String.raw`$u = F(x)G(t)$로 놓으면 $F'' + k^2F = 0$, $${heat ? `G' + c^2k^2G = 0` : `G'' + c^2k^2G = 0`}$입니다. 경계조건 $${bc}$에서 $k_n = \frac{n\pi}{L}$, $F_n = ${phi}$${fixed ? '' : String.raw` ($n = 0, 1, 2, \ldots$)`}입니다.` });
-  out.push({ id: 'expand', title: heat ? '초기 온도의 전개' : '초기 변위의 전개', panel: look, look: true, md: fixed
-    ? String.raw`$f(x) = \sum_{n=1}^{\infty} B_n${phi}$, $B_n = \frac{2}{L}\int_0^L f(x)${phi}\,dx$${heat ? '. 끝 온도가 0이 아니면 정상 상태 $U(x)$를 뺀 $f - U$를 전개합니다.' : ''}`
-    : String.raw`$f(x) = A_0 + \sum_{n=1}^{\infty} A_n${phi}$, $A_n = \frac{2}{L}\int_0^L f(x)${phi}\,dx$` });
-  const lam = String.raw`$\lambda_n = \frac{cn\pi}{L}$`;
-  out.push({ id: 'solve', title: '해', panel: heat ? 'heat' : 'wave', md: heat
-    ? (fixed ? String.raw`$u(x,t) = U(x) + \sum_{n=1}^{\infty} B_n${phi}\,e^{-\lambda_n^2 t}$, ${lam}` : String.raw`$u(x,t) = A_0 + \sum_{n=1}^{\infty} A_n${phi}\,e^{-\lambda_n^2 t}$, ${lam}. 온도는 평균 $A_0$으로 갑니다.`)
-    : String.raw`$u(x,t) = ${fixed ? '' : 'A_0 + '}\sum_{n=1}^{\infty}(B_n\cos\lambda_n t + B_n^*\sin\lambda_n t)${phi}$, ${lam}${p.damp ? String.raw`. 감쇠가 있으면($u_{tt} + 2ku_t = c^2u_{xx}$) 모드마다 $e^{-kt}$가 곱해지고 진동수는 $\sqrt{\lambda_n^2 - k^2}$로 줄어듭니다.` : ''}` });
-  return out;
+  const p = cfg.prob, fam = familyFor(p.left, p.right), mixed = p.left !== p.right, phi = fam.tex, c0 = fam.n0 === 0, A = c0 ? 'A' : 'B';
+  const endTex = (x, side, i) => side === 'fixed' ? (heat ? `u(${x},t) = U_${i}` : `u(${x},t) = 0`) : `u_x(${x},t) = 0`;
+  const bc = `${endTex('0', p.left, 1)},\\ ${endTex('L', p.right, 2)}`;
+  return [
+    { id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: String.raw`$u = F(x)G(t)$로 놓으면 $F'' + k^2F = 0$, $${heat ? `G' + c^2k^2G = 0` : `G'' + c^2k^2G = 0`}$입니다. 경계조건 $${bc}$에서 $k_n = ${fam.kTex}$, $F_n = ${phi}$${c0 ? String.raw` ($n = 0, 1, 2, \ldots$)` : ''}입니다.` },
+    { id: 'expand', title: heat ? '초기 온도의 전개' : '초기 변위의 전개', panel: mixed ? 'modes' : lookPanel(cfg), look: !mixed,
+      md: String.raw`$f(x) = ${c0 ? 'A_0 + ' : ''}\sum_{n=1}^{\infty} ${A}_n${phi}$, $${A}_n = \frac{2}{L}\int_0^L f(x)${phi}\,dx$${heat && !c0 ? '. 끝 온도가 0이 아니면 정상 상태 $U(x)$를 뺀 $f - U$를 전개합니다.' : ''}` },
+    { id: 'solve', title: '해', panel: heat ? 'heat' : 'wave', md: heat
+      ? String.raw`$u(x,t) = ${c0 ? 'A_0' : 'U(x)'} + \sum_{n=1}^{\infty} ${A}_n${phi}\,e^{-\lambda_n^2 t}$, $\lambda_n = ck_n$${c0 ? '. 온도는 평균 $A_0$으로 갑니다.' : ''}`
+      : String.raw`$u(x,t) = ${c0 ? 'A_0 + ' : ''}\sum_{n=1}^{\infty}(${A}_n\cos\lambda_n t + ${A}_n^*\sin\lambda_n t)${phi}$, $\lambda_n = ck_n$${p.damp ? String.raw`. 감쇠가 있으면($u_{tt} + 2ku_t = c^2u_{xx}$) 모드마다 $e^{-kt}$가 곱해지고 진동수는 $\sqrt{\lambda_n^2 - k^2}$로 줄어듭니다.` : ''}` },
+  ];
 }
 /** 문제의 풀이 단계: {id, title, md(교재 수식, $…$), panel(그래프), look(전개 단계), fields}. */
 const stagesOf = cfg => topicOf(cfg).stages(cfg);

@@ -46,7 +46,7 @@ const TEX_SPACE = { ',': ' ', ';': ' ', ' ': ' ', quad: ' ', qquad: ' �
 const TEX_FUNCTIONS = ['sin', 'cos', 'tan', 'exp', 'ln', 'log', 'sinh', 'cosh', 'tanh', 'sign', 'abs', 'step', 'sqrt', 'max', 'min', 'lim', 'arctan'];
 /** LaTeX와 비슷한 수식 표기를 수식 조각으로 바꿉니다: a_n, x^2, \frac{a}{b}, \int_{a}^{b}, \sum_{n=1}^{\infty}, \sqrt{x}, \pi, \cos x, \text{글}. */
 function tex(src) {
-  const toks = String(src).match(/\\[A-Za-z]+|\\[^A-Za-z]|[A-Za-z]+|\d+(?:\.\d+)?|[가-힣]+(?:\s+[가-힣]+)*|\s+|./g) ?? [];
+  const toks = String(src).replace(/''/g, '″').replace(/'/g, '′').match(/\\[A-Za-z]+|\\[^A-Za-z]|[A-Za-z]+|\d+(?:\.\d+)?|[가-힣]+(?:\s+[가-힣]+)*|\s+|./g) ?? [];
   let i = 0;
   const peek = () => { while (i < toks.length && /^\s+$/.test(toks[i])) i++; return toks[i]; };
   const group = close => { const g = seq([close]); if (peek() === close) i++; return g; };

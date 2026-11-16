@@ -16,7 +16,7 @@ function problemHtml(cfg) {
   let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
     + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
   const t = topicOf(cfg);
-  if (t.ends) html += segRow('양 끝 (x = 0, x = L)', 'ends', t.ends, p.left);
+  if (t.ends) html += segRow('x = 0 끝', 'left', t.ends, p.left) + segRow('x = L 끝', 'right', t.ends, p.right);
   if (t.damp) html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
   return html;
 }
