@@ -15,8 +15,9 @@ function problemHtml(cfg) {
   const p = cfg.prob, heat = p.eq === 'heat', eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
   let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
     + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
-  if (p.domain === 'interval') html += segRow('양 끝 (x = 0, x = L)', 'ends', p.eq === 'none' ? [['fixed', '값 0 → 사인 급수'], ['free', '기울기 0 → 코사인 급수']] : heat ? [['fixed', '온도 고정'], ['free', '단열']] : [['fixed', '고정'], ['free', '자유']], p.left);
-  if (p.eq === 'wave' && p.domain === 'interval') html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
+  const t = topicOf(cfg);
+  if (t.ends) html += segRow('양 끝 (x = 0, x = L)', 'ends', t.ends, p.left);
+  if (t.damp) html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
   return html;
 }
 const STAGE_FIELDS = {
@@ -129,14 +130,9 @@ function fHtml(cfg) {
   return `${mode}<div class="fld"><span class="hint">구간 ${halfDomain(cfg) ? '0' : '−L'} ~ L을 왼쪽부터 나눕니다. 식에는 sin x, 2x처럼 써도 됩니다.</span>${rows}<button type="button" class="btn" id="addPiece">+ 구간 추가</button></div><div class="preview" id="fPreview"></div>`;
 }
 function renderSettings() {
-  const cfg = S.cfg, p = cfg.prob, heat = p.eq === 'heat', base = [
-    ...(p.eq === 'wave' ? [{ k: 'c', type: 'text', label: '파동 속도 c' }, ...(p.damp ? [{ k: 'kDamp', type: 'text', label: '감쇠 계수 k', hint: 'u_tt + 2k u_t = c² u_xx' }] : [])] : []),
-    ...(heat ? [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.domain === 'interval' && p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }, { k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : [])] : []),
-    ...(p.domain === 'rect' ? [{ k: 'b', type: 'text', label: '막의 세로 길이 b', hint: '가로 길이 a는 L입니다.' }] : []),
-    ...(p.domain !== 'line' ? [{ k: 'L', type: 'text', label: p.domain === 'periodic' ? '반주기 L (주기 2L)' : p.domain === 'rect' ? '막의 가로 길이 a = L' : '길이 L', hint: 'pi, 2, 1/2처럼 씁니다.' }] : []),
-    ...(p.eq === 'wave' ? [{ k: 'g', type: 'text', label: '초기 속도 g(x) = uₜ(x, 0)', hint: '0이면 정지 상태에서 시작합니다.' }] : []),
-    ...(p.domain === 'rect' ? [{ k: 'h', type: 'text', label: '처음 모양의 y 방향 h(y), 0 < y < b', hint: '처음 모양은 f(x)·h(y)입니다. y와 b로 씁니다.' }] : []),
-    ...(p.domain !== 'line' ? [{ k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }] : []),
+  const cfg = S.cfg, p = cfg.prob, dom = DOMAINS.find(d => d.id === p.domain), base = [
+    ...(topicOf(cfg).fields?.(p) ?? []),
+    ...(dom.lLabel ? [{ k: 'L', type: 'text', label: dom.lLabel, hint: 'pi, 2, 1/2처럼 씁니다.' }, { k: 'N', type: 'range', label: '항의 개수 N (부분합에 더할 항)', min: 1, max: 200 }] : []),
     ...(anyInfinite(cfg) ? [{ k: 'X', type: 'text', label: '보이는 범위 X (−X < x < X)' }] : [])];
   $('problem').innerHTML = problemHtml(cfg);
   $('baseFields').innerHTML = fHtml(cfg) + base.map(f => fieldHtml({ ...f, label: esc(f.label) }, cfg)).join('');

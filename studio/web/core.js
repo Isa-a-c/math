@@ -2,14 +2,14 @@
 /* 공업수학 시각화의 상태, 값 읽기, 계산, 정확한 값, 구간별 함수. 화면(DOM)은 $ 외에 쓰지 않습니다. */
 /* 공업수학 시각화: 문제(방정식·영역·양 끝 조건)와 함수를 정하면 풀이 단계(변수분리·고유값 문제 → 전개 → 해)마다 수식과 그래프를 보여 줍니다(문제 모델은 problem.js).
    예제(문제·풀이·그림)는 사용자가 직접 만들고 고치며, 개념 설명도 고칠 수 있습니다. 모두 Word로 출력하고 파일로 저장합니다.
-   계산은 math.js, 그리기는 plot.js, 수식 표기와 Word 파일은 docx.js, 개념 설명은 concepts.js입니다. */
+   개념마다 계산·그래프·요약·소문항·설명은 modules/*.js, 등록부는 concepts.js, 공통 계산은 math.js와 이 파일입니다. */
 const $ = id => document.getElementById(id);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const DEFAULTS = {
   f: 'sign(x)', L: 'pi', N: 9, params: {},
   prob: { eq: 'none', domain: 'periodic', left: 'fixed', right: 'fixed', damp: false },   // 문제(problem.js). on 등은 여기서 만들어집니다.
   look: 'partial', stage: null,   // 전개 단계에서 볼 그래프, 그래프로 보는 풀이 단계(null이면 마지막 단계)
-  on: { series: true, coef: false, spectrum: false, gibbs: false, transform: false, half: false, wave: false, membrane: false, heat: false },
+  on: Object.fromEntries(CONCEPTS.map(c => [c.id, c.id === 'series'])),   // 쓰는 개념 모듈(주제가 정함)
   fMode: 'single', pieces: [],   // 구간별 입력이면 pieces로 f를 만듭니다.
   coefKind: 'b', coefN: 1, halfMode: 'sine',
   waveDomain: 'finite', g: '0', c: '1',
@@ -76,7 +76,6 @@ function scanRange(fn, xr, times) {
   const pad = Math.max(.05, .15 * (hi - lo));
   return [lo - pad, hi + pad];
 }
-/** 설정 하나로 모든 개념의 결과를 계산합니다. */
 /** 급수 모델은 함수·L·전개 방식이 같으면 다시 쓰므로, N을 바꿀 때 다시 계산하지 않습니다(정밀 계수 캐시도 함께 남음). */
 const SERIES_CACHE = new Map();
 function seriesOf(cfg, f, L) {
@@ -141,42 +140,7 @@ function compute(cfg) {
   const R = { L, f, N, series: seriesOf(cfg, f, L) };
   R.view = { x: rangeOf(cfg, 'xMin', 'xMax', '그래프 가로 범위', L), y: rangeOf(cfg, 'yMin', 'yMax', '그래프 세로 범위', L) };
   const X = anyInfinite(cfg) ? positive(cfg, 'X', '범위 X', L) : 0;
-  if (cfg.on.wave) {
-    const speed = positive(cfg, 'c', '파동 속도 c', L), g = fnOf(cfg, 'g', '초기 속도 g(x)', L), tSet = optionalPositive(cfg, 'tEndWave', '현 끝 시간', L);
-    const k = real(cfg, 'damping', '감쇠 k', L);
-    if (k < 0) throw new Error('감쇠 k: 0 이상이어야 합니다.');
-    if (cfg.waveDomain === 'finite') boundedOn(g, 0, L, '초기 속도 g(x)'); else boundedOn(g, -X, X, '초기 속도 g(x)');
-    if (cfg.waveDomain === 'finite') {
-      const free = cfg.waveEnds === 'free', T = 2 * L / speed, times = [];
-      const model = free || k > 0 ? stringModel(f, g, L, N, speed, k, free) : buildPde('wave', 'fixed', f, g, { L, N, speed, alpha: 1 });
-      const tEnd = tSet ?? 2 * T;
-      for (let i = 0; i <= 40; i++) times.push(i / 40 * tEnd);
-      R.wave = { ...model, L, speed, T, g, tEnd, damping: k, free, yr: scanRange(model.u, [0, L], times) };
-    } else {
-      const tEnd = tSet ?? X / speed, model = buildPde('wave', 'infinite', f, g, { speed, X, tEnd, alpha: 1 });
-      R.wave = { ...model, X, speed, g, tEnd, restWave: String(cfg.g).trim() === '0', yr: scanRange(model.u, [-X, X], [0, tEnd / 4, tEnd / 2, tEnd]) };
-    }
-  }
-  if (cfg.on.membrane) {
-    const b = positive(cfg, 'b', '막의 세로 길이 b', L), h = (() => { let c; try { c = compile(String(cfg.h).replace(/\by\b/g, 'x').replace(/\bb\b/g, 'L')); } catch (e) { throw new Error(`처음 모양 h(y): ${e.message}`); } const P = { ...cfg.params, L: b }; return y => c.fn(y, P); })();
-    boundedOn(h, 0, b, '처음 모양 h(y)');
-    R.membrane = { ...membraneModel(f, h, L, b, Math.max(1, Math.min(20, cfg.M)), R.wave.speed), h };
-    R.membrane.tEnd = 4 * L / R.wave.speed;
-  }
-  if (cfg.on.transform) R.transform = integralModel(f, positive(cfg, 'X', '범위 X', L), positive(cfg, 'wMax', '적분의 위끝 a', L));
-  if (cfg.on.heat) {
-    const alpha = positive(cfg, 'alpha', '열확산계수 c²', L), tSet = optionalPositive(cfg, 'tEndHeat', '막대 끝 시간', L);
-    if (cfg.heatDomain === 'finite') {
-      const left = cfg.bc === 'fixed' ? real(cfg, 'left', '왼쪽 끝 온도') : 0, right = cfg.bc === 'fixed' ? real(cfg, 'right', '오른쪽 끝 온도') : 0;
-      const model = buildPde('heat', cfg.bc, f, () => 0, { L, N, alpha, speed: 1, left, right }), tEnd = tSet ?? 3 / model.rate(1);
-      R.heat = { ...model, L, alpha, left, right, tEnd, range: [0, L], yr: scanRange(model.u, [0, L], [0, tEnd / 20, tEnd]) };
-    } else {
-      const tEnd = tSet ?? X * X / (18 * alpha), model = buildPde('heat', 'infinite', f, () => 0, { alpha, X, tEnd, speed: 1 });
-      let total = 0; const q = 4000, span = X + 6 * Math.sqrt(alpha * tEnd), h = 2 * span / q;
-      for (let i = 0; i < q; i++) total += f(-span + (i + .5) * h) * h;
-      R.heat = { ...model, X, alpha, tEnd, total, yr: scanRange(model.u, [-X, X], [0]) };
-    }
-  }
+  for (const mod of MODULES) if (cfg.on[mod.id] && mod.compute) mod.compute(cfg, R, { L, f, N, X });   // 등록 순서대로(막은 현 다음)
   return R;
 }
 const timeOf = (part, cfg) => part ? cfg.s * part.tEnd : 0;
