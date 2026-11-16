@@ -37,6 +37,16 @@ function normalizeProblem(p) {
   p.damp = !!p.damp && !!t.damp;
   return p;
 }
+/** 주제가 고르게 하는 끝(변)과 그 선택지: {left: [[값, 이름], …], …}. 배열이면 x = 0 끝과 x = L 끝이 같은 선택지입니다. */
+const endOptions = t => Array.isArray(t.ends) ? { left: t.ends, right: t.ends } : t.ends ?? {};
+/** 주제가 풀 수 있는 모든 문제입니다(공통 검사가 씁니다). */
+function problemsOf(t) {
+  let list = [{ eq: t.eq, domain: t.domain, left: 'fixed', right: 'fixed', damp: false }];
+  for (const [side, opts] of Object.entries(endOptions(t))) list = list.flatMap(p => opts.map(([v]) => ({ ...p, [side]: v })));
+  if (t.damp) list = list.flatMap(p => [p, { ...p, damp: true }]);
+  const seen = new Set();
+  return list.map(normalizeProblem).filter(p => { const k = JSON.stringify(p); if (seen.has(k)) return false; seen.add(k); return true; });
+}
 /** 주제에서 계산에 쓰는 값(cfg.on = 쓰는 개념 모듈, halfMode·waveDomain·bc 같은 계산 값, damping)을 만듭니다. */
 function applyProblem(cfg) {
   const p = normalizeProblem(cfg.prob), t = topicFor(p.eq, p.domain), on = cfg.on;

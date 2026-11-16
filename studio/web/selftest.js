@@ -79,20 +79,44 @@ window.STUDIO_SELFTEST = () => {
   prob('eq', 'wave'); prob('domain', 'rect'); check(shown() === 'membrane' && near(S.R.membrane.u(PI / 2, .5, 0), PI / 4, .1), '직사각형 막: t = 0에서 f(x)h(y)');
   prob('domain', 'interval'); prob('damp', 'on'); set({ f: 'sin(x)', kDamp: '0.5' }); const mu2 = Math.sqrt(1 - .25);
   check(near(S.R.wave.u(PI / 2, 1), Math.exp(-.5) * (Math.cos(mu2) + .5 / mu2 * Math.sin(mu2)), 1e-6), '감쇠: e^(−kt) 감쇠 진동');
-  // 풀 수 있는 모든 문제에서 단계·자동 문장·풀이가 만들어지는지
-  { const seen = new Set(), bad3 = [];
-    for (const e of EQUATIONS) for (const d of DOMAINS) if (domainOk(e.id, d.id)) for (const l of ['fixed', 'free']) for (const r of ['fixed', 'free']) for (const damp of [false, true]) for (const lk of LOOKS.map(l => l[0])) {
-      const cfg = mergeCfg({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, prob: { eq: e.id, domain: d.id, left: l, right: r, damp }, look: lk, kDamp: '0.2' }), key = JSON.stringify(cfg.on) + JSON.stringify(cfg.prob);
-      if (seen.has(key)) continue;
-      seen.add(key);
+  // 주제 공통 검사: 등록된 모든 주제의 모든 문제(주제를 더하면 저절로 검사됩니다)
+  { const bad = [], n = { problems: 0, draws: 0 }, base = { f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, kDamp: '0.2' };
+    const fail = (cfg, what) => bad.push(`${recipeText(cfg)} ${JSON.stringify(cfg.prob)}: ${what}`), junk = s => /undefined|NaN|\[object/.test(s);
+    for (const t of TOPICS) for (const p of problemsOf(t)) {
+      n.problems++;
       try {
-        const R = compute(cfg);
-        for (const st of stagesOf(cfg)) if (!PANELS[st.panel] || !st.md || /undefined|NaN/.test(st.md)) bad3.push(`${recipeText(cfg)}: 단계 ${st.id}`);
-        for (const it of autoItems(cfg)) { const p = problemText(it.kind, cfg, R), q = solutionText(it.kind, cfg, R); if (!p || !q || /undefined|NaN|꺼져 있습니다/.test(p + q)) bad3.push(`${recipeText(cfg)}: ${it.kind}`); }
-        if (!recipeOf(cfg)[1]) bad3.push(key);
-      } catch (err) { bad3.push(`${key}: ${err.message}`); }
+        S.cfg = mergeCfg({ ...base, prob: p }); S.pin = null; S.zoom = null; renderSettings(); recompute();
+        const cfg = S.cfg;
+        if (!$('err').hidden) { fail(cfg, `계산 오류: ${$('err').textContent}`); continue; }
+        if (topicOf(cfg) !== t) fail(cfg, '다른 주제로 바뀜');
+        for (const f of t.fields?.(cfg.prob) ?? []) if (!$(`f_${f.k}`) || DEFAULTS[f.k] === undefined) fail(cfg, `입력 칸 ${f.k}(화면 칸과 기본값)`);
+        for (const st of stagesOf(cfg)) for (const lk of st.look ? LOOKS.map(l => l[0]) : [cfg.look]) {
+          cfg.stage = st.id; cfg.look = lk; applyProblem(cfg); renderSettings(); recompute(); draw(); n.draws++;
+          const panel = stageOf(cfg).panel, fr = S.frames[panel], title = document.querySelector('#panels .pnl .pt')?.textContent ?? '';
+          if (!PANELS[panel] || shown() !== panel || !painted() || !fr) { fail(cfg, `${st.id}/${lk}: 그래프 ${panel}`); continue; }
+          if (!title || junk(title + stageOf(cfg).md + $('stageBox').textContent + $('stageBar').textContent)) fail(cfg, `${st.id}: 제목·단계 수식`);
+          if (!fr.probe((fr.xr[0] + fr.xr[1]) / 2).every(([name, v]) => name && Number.isFinite(v))) fail(cfg, `${st.id}: 값 읽기`);
+        }
+        const R = S.R, sum = summary(cfg, R), items = autoItems(cfg);
+        if (!sum.length || junk(JSON.stringify(sum))) fail(cfg, '요약');
+        if (!items.length) fail(cfg, '자동 소문항 없음');
+        for (const it of items) { const q = problemText(it.kind, cfg, R), a = solutionText(it.kind, cfg, R); if (!q || !a || junk(q + a) || /꺼져 있습니다/.test(q + a)) fail(cfg, `소문항 ${it.kind}`); }
+        if (!CONCEPT_MARKUP[deepestOf(cfg)]) fail(cfg, '개념 설명');
+        const back = mergeCfg(JSON.parse(JSON.stringify(storedCfg(cfg))));
+        if (JSON.stringify(back.prob) !== JSON.stringify(cfg.prob) || JSON.stringify(back.on) !== JSON.stringify(cfg.on) || recipeText(back) !== recipeText(cfg)) fail(cfg, '저장하고 다시 읽으면 달라짐');
+      } catch (err) { fail(S.cfg, err.message); }
     }
-    check(!bad3.length && seen.size > 20, `모든 문제 ${seen.size}가지의 단계·자동 문장·풀이${bad3.length ? ` (문제: ${bad3.slice(0, 3).join(' / ')})` : ''}`); }
+    check(!bad.length && n.problems > 20, `주제 공통 검사: 주제 ${TOPICS.length}개, 문제 ${n.problems}가지, 그래프 ${n.draws}장의 단계·그래프·값 읽기·요약·소문항·저장${bad.length ? ` (${bad.length}건: ${bad.slice(0, 3).join(' / ')})` : ''}`); }
+  // 고유함수 종류 공통 검사: 끝 조건과 직교성(FAMILIES에 줄을 더하면 저절로 검사됩니다)
+  { const bad = [], L = 1.3, hD = 1e-6;
+    for (const fam of FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' }))) {
+      const w = fam.w ?? (() => 1), d = (n, x) => (fam.phi(n, x + hD, L) - fam.phi(n, x - hD, L)) / (2 * hD);
+      for (let m = fam.n0; m < fam.n0 + 4; m++) {
+        fam.ends.forEach((e, i) => { const x = i ? L : 0, v = fam.phi(m, x, L), dv = d(m, x), ok = { fixed: Math.abs(v) < 1e-9, free: Math.abs(dv) < 1e-5, center: Math.abs(dv) < 1e-5, robin: Math.abs(dv + (fam.h ?? 0) * v) < 1e-5 }[e]; if (!ok) bad.push(`${fam.id} n=${m}: ${e} 끝`); });
+        for (let k = fam.n0; k < fam.n0 + 4; k++) { const ip = integrate(x => w(x) * fam.phi(m, x, L) * fam.phi(k, x, L), 0, L); if (Math.abs(ip - (m === k ? normOf(fam, k, L) : 0)) > 1e-6 * L) bad.push(`${fam.id}: <φ${m}, φ${k}> = ${ip}`); }
+      }
+    }
+    check(!bad.length, `고유함수 종류 ${FAMILIES.length}개의 끝 조건과 직교성(∫wφₘφₙ = 0, ∫wφₙ² = 노름)${bad.length ? ` (${bad.slice(0, 3).join(' / ')})` : ''}`); }
   reset({ f: 'x', L: 'pi', axes: { rep: 'sine', look: 'coef', time: 'none', bound: 'fixed', dim: '1', damp: 'off' } });
   check(near(fineCoef(S.R.series, 'b', 1), 2, 1e-6) && problemText('coef', S.good, S.R).includes('\\frac{2}{L}\\int_{0}^{L}') && solutionText('coef', S.good, S.R).includes('2배'), '반구간 전개의 계수: 2/L ∫₀ᴸ 꼴로 묻고 풂');
   // 상단 탭: 시각화 / 예제·출력

@@ -19,12 +19,14 @@ const FAMILIES = [
 ];
 /** 양 끝 조건(고정·자유)에 맞는 고유함수 종류입니다. */
 const familyFor = (left, right) => FAMILIES.find(f => f.ends[0] === left && f.ends[1] === right) ?? FAMILIES[0];
+/** ∫ w φₙ² (기본: 상수 고유함수면 L, 아니면 L/2) */
+const normOf = (fam, n, L) => fam.norm ? fam.norm(n, L) : n === 0 ? L : L / 2;
 const familyOf = cfg => FAMILIES.find(f => f.id === cfg.family) ?? FAMILIES[0];
 /** 계수 cₙ = ∫ f φₙ / ∫ φₙ² (n = 0, 상수 고유함수면 평균). 화면용 중점 적분입니다. */
 function eigenCoefficients(fam, fn, L, N) {
   const m = QUAD, h = L / m, xs = new Float64Array(m), v = new Float64Array(m), c = new Float64Array(N + 1);
   for (let j = 0; j < m; j++) { xs[j] = (j + .5) * h; v[j] = fn(xs[j]); if (!isFinite(v[j])) throw new Error('구간 안에 값이 정의되지 않는 점이 있습니다.'); }
-  for (let n = fam.n0; n <= N; n++) { let s = 0; for (let j = 0; j < m; j++) s += v[j] * fam.phi(n, xs[j], L); c[n] = s * h / (n === 0 ? L : L / 2); }
+  for (let n = fam.n0; n <= N; n++) { let s = 0; for (let j = 0; j < m; j++) s += v[j] * fam.phi(n, xs[j], L); c[n] = s * h / normOf(fam, n, L); }
   return c;
 }
 const eigenCache = new WeakMap();
@@ -32,7 +34,7 @@ const eigenCache = new WeakMap();
 function fineEigen(fam, fn, L, n) {
   const memo = eigenCache.get(fn) ?? new Map(), key = `${fam.id}|${L}|${n}`;
   eigenCache.set(fn, memo);
-  if (!memo.has(key)) memo.set(key, integrate(x => fn(x) * fam.phi(n, x, L), 0, L) / (n === 0 ? L : L / 2));
+  if (!memo.has(key)) memo.set(key, integrate(x => fn(x) * fam.phi(n, x, L), 0, L) / normOf(fam, n, L));
   return memo.get(key);
 }
 /** 부분합 Σ cₙφₙ(x) (n0부터 N까지)입니다. */
