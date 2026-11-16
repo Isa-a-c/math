@@ -43,7 +43,7 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
     const refW = ref?.R.wave;
     if (refW) curve(ctx, x => refW.u(x, timeOf(refW, cfg)), b, xr, M, C.green, 2.5, [], [7, 5]);
     curve(ctx, x => W.u(x, t), b, xr, M, C.blue, 3, [], null, finite ? 1 : 2);
-    return { title: finite ? `현의 진동${{ sine: '', cosine: '(자유 끝)', qsine: '(x = L 끝 자유)', qcosine: '(x = 0 끝 자유)' }[W.family.id]}${W.damping > 0 ? `(감쇠 k = ${fmt(W.damping, 3)})` : ''}  t = ${fmt(t, 3)}` : `무한히 긴 현  t = ${fmt(t, 3)}`, frame: { b, xr, yr },
+    return { title: finite ? `${W.family.radial ? '원형 막 (반지름 방향 단면)' : '현의 진동'}${W.family.id === 'sine' || W.family.radial ? '' : ` (${W.family.title})`}${W.damping > 0 ? `(감쇠 k = ${fmt(W.damping, 3)})` : ''}  t = ${fmt(t, 3)}` : `무한히 긴 현  t = ${fmt(t, 3)}`, frame: { b, xr, yr },
       legend: [['--blue', uxt], ['--muted', '처음 모양', true], ...(!finite && W.restWave ? [['--hot', '오른쪽 파동', true], ['--green', '왼쪽 파동', true]] : []), ...(refW ? [pinLabel(uxt)] : [])],
       probe: x => [['u', W.u(x, t)], ['처음', R.f(x)]] };
   },
@@ -51,43 +51,36 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
   summary(cfg, R) {
     const out = [], W = R.wave, t = timeOf(W, cfg);
     if (cfg.waveDomain === 'finite') {
-      const ends = Math.max(W.family.ends[0] === 'fixed' ? Math.abs(R.f(0)) : 0, W.family.ends[1] === 'fixed' ? Math.abs(R.f(R.L)) : 0);
-      out.push(['현의 진동', `주기 ${m(`<i>T</i> = 2π/<i>λ</i><sub>1</sub> = ${fmt(W.T, 4)}`)}, 기본 각진동수 ${m(`<i>λ</i><sub>1</sub> = ${coefText(W.omega(1))}`)}. 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.${ends > 1e-6 ? ' 초기 변위가 양 끝에서 0이 아니어서 끝점 부근에서 급수가 함수와 다릅니다.' : ''}`]);
+      const fam = W.family, ends = Math.max(W.family.ends[0] === 'fixed' ? Math.abs(R.f(0)) : 0, W.family.ends[1] === 'fixed' ? Math.abs(R.f(R.L)) : 0);
+      out.push([fam.radial ? '원형 막' : '현의 진동', `${fam.harmonic ? `주기 ${m(`<i>T</i> = 2π/<i>λ</i><sub>1</sub> = ${fmt(W.T, 4)}`)}, ` : ''}기본 각진동수 ${m(`<i>λ</i><sub>1</sub> = ${coefText(W.omega(1))}`)}.${fam.harmonic ? '' : ` ${m('<i>λ</i><sub><i>n</i></sub>')}이 정수배가 아니어서 주기적이지 않습니다.`} 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.${ends > 1e-6 ? ' 초기 변위가 양 끝에서 0이 아니어서 끝점 부근에서 급수가 함수와 다릅니다.' : ''}`]);
     } else out.push(['무한히 긴 현', `초기 모양이 절반씩 나뉘어 속도 ${m(fmt(W.speed, 3))}로 양쪽으로 갑니다. 지금 ${m(`<i>t</i> = ${fmt(t, 3)}`)}.`]);
     if (W.damping > 0) out.push(['감쇠', `모드마다 ${m('<i>e</i><sup>−<i>kt</i></sup>')}로 줄어듭니다(k = ${fmt(W.damping, 3)}). ${W.damping < W.omega(1) ? '진동하면서 줄어듭니다.' : '첫 모드부터 진동하지 않고 줄어듭니다(과감쇠).'}`]);
-    if (W.free) out.push(['자유 끝', W.family.id === 'cosine' ? '양 끝이 자유로워 모드가 cos(nπx/L)이고, 평균 높이(0번 모드)는 그대로 유지됩니다.' : `한쪽 끝이 자유로워 모드가 ${W.family.plain}이고, 기본 진동수가 양 끝 고정일 때의 절반(주기 4L/c)입니다.`]);
+    if (W.free && W.family.harmonic) out.push(['자유 끝', W.family.id === 'cosine' ? '양 끝이 자유로워 모드가 cos(nπx/L)이고, 평균 높이(0번 모드)는 그대로 유지됩니다.' : `한쪽 끝이 자유로워 모드가 ${W.family.plain}이고, 기본 진동수가 양 끝 고정일 때의 절반(주기 4L/c)입니다.`]);
     return out;
   },
   items: {
     wave: { label: '현의 해', auto: true,
       problem(cfg, R, { Ls }) {
-        const g = prettyExpr(cfg.g, cfg.params), cs = prettyExpr(cfg.c);
-        const fam = familyOf(cfg), ends = { sine: '의 양 끝이 고정되어 있다', cosine: '의 양 끝이 자유롭게 움직인다($u_x = 0$)', qsine: '의 $x = 0$ 끝은 고정되어 있고 $x = L$ 끝은 자유롭게 움직인다($u_x(L,t) = 0$)', qcosine: '의 $x = 0$ 끝은 자유롭게 움직이고($u_x(0,t) = 0$) $x = L$ 끝은 고정되어 있다' }[fam.id];
-        const extra = `${+cfg.damping > 0 ? ` 감쇠 계수는 $k = ${prettyExpr(cfg.damping)}$이다($u_{tt} + 2ku_t = c^2u_{xx}$).` : ''}`;
-        return cfg.waveDomain === 'finite' ? `길이 $L = ${Ls}$, 파동 속도 $c = ${cs}$인 현${ends}.${extra} 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 변위 $u(x,t)$를 구하시오.`
-          : `무한히 긴 현($c = ${cs}$)의 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 $u(x,t)$를 구하시오.`;
+        const g = prettyExpr(cfg.g, cfg.params), cs = prettyExpr(cfg.c), extra = `${+cfg.damping > 0 ? ` 감쇠 계수는 $k = ${prettyExpr(cfg.damping)}$이다($u_{tt} + 2ku_t = c^2u_{xx}$).` : ''}`;
+        if (cfg.waveDomain !== 'finite') return `무한히 긴 현($c = ${cs}$)의 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 $u(x,t)$를 구하시오.`;
+        const fam = familyOf(cfg);
+        if (fam.radial) return `반지름 $R = ${Ls}$, 파동 속도 $c = ${cs}$인 원형 막의 가장자리가 고정되어 있다.${extra} 처음 변위가 중심으로부터의 거리 $r$에만 따르는 $f(r)$이고 처음 속도가 $g(r) = ${g}$일 때 $u(r,t)$를 구하시오.`;
+        const say = { fixed: ['고정되어 있고', '고정되어 있다'], free: ['자유롭게 움직이고($u_x = 0$)', '자유롭게 움직인다($u_x = 0$)'] }, [a, b] = fam.ends;
+        const ends = a === b ? `의 양 끝이 ${say[a][1]}` : `의 $x = 0$ 끝은 ${say[a][0]} $x = L$ 끝은 ${say[b][1]}`;
+        return `길이 $L = ${Ls}$, 파동 속도 $c = ${cs}$인 현${ends}.${extra} 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 변위 $u(x,t)$를 구하시오.`;
       },
       solution(cfg, R, { tol }) {
-        const out = [], W = R.wave;
-        if (cfg.waveDomain !== 'finite') { out.push(String.raw`D’Alembert 해 $u = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$` + `에 $c = ${fmt(W.speed, 3)}$을 넣습니다. 초기 모양의 절반이 속도 ${fmt(W.speed, 3)}로 오른쪽과 왼쪽으로 이동하며, 모양은 변하지 않습니다.`); return out; }
-        if (W.free || W.damping > 0) {
-          const fam = W.family, c0 = fam.n0 === 0, Bn = firstNonzero(n => fineEigen(fam, R.f, R.L, n), 4, tol);
-          out.push(`변수분리로 고유함수 $${fam.tex}$, $k_n = ${fam.kTex}$, $\lambda_n = ck_n$입니다($\lambda_1 = ${coefText(W.omega(1))}$). 계수는 초기 변위를 이 고유함수로 전개한 계수입니다.${c0 ? ' 양 끝이 자유로워 평균 높이 $A_0$은 그대로 남습니다.' : ''}`);
-          if (c0) { const e0 = exact(fineEigen(fam, R.f, R.L, 0)); out.push(`$$A_0 ${rel(e0)} ${e0.text}$$`); }
-          if (Bn.length) out.push(valueEq(c0 ? 'A' : 'B', Bn.map(n => [n, fineEigen(fam, R.f, R.L, n)])));
-          if (W.damping > 0) out.push(`감쇠가 있으면 각 모드의 시간 부분이 $q_n'' + 2kq_n' + \\lambda_n^2 q_n = 0$을 따릅니다. $k = ${fmt(W.damping, 4)}$${W.damping < W.omega(1) ? `이 $\\lambda_1$보다 작으므로 $q_n = e^{-kt}(B_n\\cos\\mu_n t + \\frac{kB_n}{\\mu_n}\\sin\\mu_n t)$, $\\mu_n = \\sqrt{\\lambda_n^2 - k^2}$입니다(처음 속도 0일 때).` : '이 $\\lambda_1$ 이상이어서 낮은 모드는 진동하지 않고 줄어듭니다(과감쇠).'}`);
-          out.push(EXACT_NOTE);
-          return out;
-        }
-        const Bn = firstNonzero(n => fineHalf(R.f, R.L, n, false), 4, tol), Vn = firstNonzero(n => fineHalf(W.g, R.L, n, false), 4, tol);
-        out.push(`변수분리로 $\\lambda_n = cn\\pi/L = ${coefText(W.omega(1))}n$이고, 계수는 초기 변위와 초기 속도의 반구간 사인 계수에서 나옵니다.`);
-        { const sym = symbolicFor({ ...cfg, on: { ...cfg.on, half: true } }, R, 'sine'); if (sym) out.push(symbolicSteps(sym, 'sine', { a0: 'A_0', a: 'A_n', b: 'B_n' })); }
-        if (Bn.length) out.push(valueEq('B', Bn.map(n => [n, fineHalf(R.f, R.L, n, false)])));
-        if (Vn.length) out.push(valueEq('B^*', Vn.map(n => [n, fineHalf(W.g, R.L, n, false) / W.omega(n)])));
-        out.push(EXACT_NOTE);
-        const terms = Bn.slice(0, 3).map(n => [fineHalf(R.f, R.L, n, false), `cos ${coefText(W.omega(n))}t · sin ${argOf(n, R.L)}`]);
-        if (terms.length) out.push(`$$u(x,t) \\approx ${termsText(terms)}$$`);
-        out.push(`현은 주기 $2L/c = ${fmt(W.T, 4)}$로 처음 모양으로 돌아옵니다.`);
+        const W = R.wave;
+        if (cfg.waveDomain !== 'finite') return [String.raw`D’Alembert 해 $u = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\,ds$` + `에 $c = ${fmt(W.speed, 3)}$을 넣습니다. 초기 모양의 절반이 속도 ${fmt(W.speed, 3)}로 오른쪽과 왼쪽으로 이동하며, 모양은 변하지 않습니다.`];
+        const fam = W.family, v = fam.radial ? 'r' : 'x', A = fam.n0 === 0 ? 'A' : 'B', out = [];
+        out.push(`변수분리 $u = F(${v})G(t)$로 $${fam.ode ?? "F'' + k^2F = 0"}$, $G'' + c^2k^2G = 0$을 얻고, 모드마다 각진동수 $\\lambda_n = ck_n$으로 진동합니다($\\lambda_1 = ${coefText(W.omega(1))}$).`);
+        out.push(...eigenSteps(cfg, R, { fam, what: '초기 변위 $f$', name: A, fnTex: `f(${v})`, tol }));
+        const Vn = firstNonzero(n => fineEigen(fam, W.g, R.L, n), 4, tol);
+        if (Vn.length) out.push(`초기 속도도 같은 고유함수로 전개해 $\\lambda_n$으로 나누면 $${A}_n^*$입니다.`, valueEq(`${A}^*`, Vn.map(n => [n, fineEigen(fam, W.g, R.L, n) / W.omega(n)])));
+        out.push(`$$u(${v},t) = ${fam.n0 === 0 ? `${A}_0 + ` : ''}\\sum_{n=1}^{\\infty}(${A}_n\\cos\\lambda_n t + ${A}_n^*\\sin\\lambda_n t)${fam.tex}$$`);
+        if (fam.n0 === 0) out.push(`양 끝이 자유로워 평균 높이 $${A}_0$은 그대로 남습니다.`);
+        if (W.damping > 0) out.push(`감쇠가 있으면 각 모드의 시간 부분이 $q_n'' + 2kq_n' + \\lambda_n^2 q_n = 0$을 따릅니다. $k = ${fmt(W.damping, 4)}$${W.damping < W.omega(1) ? `이 $\\lambda_1$보다 작으므로 $q_n = e^{-kt}(B_n\\cos\\mu_n t + \\frac{kB_n}{\\mu_n}\\sin\\mu_n t)$, $\\mu_n = \\sqrt{\\lambda_n^2 - k^2}$입니다(처음 속도 0일 때).` : '이 $\\lambda_1$ 이상이어서 낮은 모드는 진동하지 않고 줄어듭니다(과감쇠).'}`);
+        else out.push(fam.harmonic ? `모든 $\\lambda_n$이 $\\lambda_1$의 정수배이므로 주기 $2\\pi/\\lambda_1 = ${fmt(W.T, 4)}$마다 처음 모양으로 돌아옵니다.` : `$\\lambda_n$이 $\\lambda_1$의 정수배가 아니어서 처음 모양으로 정확히 돌아오지 않습니다.`);
         return out;
       } },
   },
@@ -100,7 +93,7 @@ defineTopic({
   uses: p => p.left === p.right ? ['series', 'half', 'wave'] : ['modes', 'wave'],
   params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id, waveDomain: 'finite', waveEnds: p.left === p.right ? p.left : 'mixed' }),
   fields: WAVE_FIELDS,
-  stages: cfg => intervalStages(cfg, false),
+  stages: cfg => eigenStages(cfg, false),
 });
 defineTopic({
   id: 'dalembert', eq: 'wave', domain: 'line',

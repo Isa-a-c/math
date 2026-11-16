@@ -13,15 +13,16 @@ $$\text{사인:}\quad b_n = \frac{2}{L}\int_{0}^{L} f(x)\sin\frac{n\pi x}{L}\,dx
 });
 defineTopic({
   id: 'halfRange', eq: 'none', domain: 'interval', look: p => p.left === p.right, mixed: true,
-  ends: [['fixed', '값 0'], ['free', '기울기 0']],
+  ends: { left: [['fixed', '값 0'], ['free', '기울기 0']], right: [['fixed', '값 0'], ['free', '기울기 0'], ['robin', 'f′ + hf = 0']] },
+  fields: p => p.right === 'robin' ? [{ k: 'hRobin', type: 'text', label: '경계 계수 h', hint: 'x = L에서 f′ + hf = 0' }] : [],
   name: p => p.left === p.right ? ['11장', `반구간 전개 (${p.left === 'fixed' ? '사인' : '코사인'} 급수)`] : [null, `고유함수 전개 (${familyFor(p.left, p.right).plain})`],
   uses: p => p.left === p.right ? ['series', 'half'] : ['modes'],
   params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id }),
   stages: cfg => {
-    const p = cfg.prob, fam = familyFor(p.left, p.right), fixed = p.left === 'fixed';
+    const p = cfg.prob, fam = familyOf(cfg), fixed = p.left === 'fixed';
     if (p.left !== p.right) return [
       { id: 'basis', title: '고유함수 (양 끝 조건이 정함)', panel: 'eigen', md: String.raw`${fam.title}인 $${fam.tex}$로 전개합니다. 양 끝 조건이 다르면 반구간 사인·코사인이 아니라 이런 고유함수가 나옵니다.` },
-      { id: 'expand', title: '고유함수 전개', panel: 'modes', md: String.raw`$f(x) = \sum_{n=1}^{\infty} c_n${fam.tex}$, $c_n = \frac{2}{L}\int_0^L f(x)${fam.tex}\,dx$` },
+      { id: 'expand', title: '고유함수 전개', panel: 'modes', md: String.raw`$f(x) = \sum_{n=1}^{\infty} c_{n}${fam.tex}$, $${coefTexOf(fam)}$` },
     ];
     return [
       { id: 'basis', title: '고유함수 (양 끝 조건이 정함)', panel: 'eigen', md: fixed

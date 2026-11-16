@@ -7,9 +7,13 @@ defineConcept({
 
 $$f(x) = \sum_{n=1}^{\infty} c_n\varphi_n(x),\quad c_n = \frac{\int_0^L f\varphi_n\,dx}{\int_0^L \varphi_n^2\,dx} = \frac{2}{L}\int_0^L f(x)\varphi_n(x)\,dx$$
 
+끝이 주위로 열을 내보내면($u_x + hu = 0$) $k_n$은 $\tan kL = -k/h$ 같은 방정식의 근이 되고, 원판(반지름 방향)에서는 Bessel 함수 $J_0(\alpha_n r/R)$가 가중치 $r$로 직교합니다. 계수는 언제나 $c_n = \int w f\varphi_n / \int w\varphi_n^2$입니다.
+
 > 경계조건이 고유함수를 정하고, 고유함수가 전개의 모양을 정합니다. 반구간 사인·코사인 전개는 양 끝 조건이 같은 경우입니다.`,
   compute(cfg, R, { L, f, N }) {
-    const fam = familyOf(cfg), c = eigenCoefficients(fam, f, L, Math.max(N, 30));
+    const fam = familyOf(cfg);
+    if (fam.h) positive(cfg, 'hRobin', '열 방출 계수 h', L);
+    const c = eigenCoefficients(fam, f, L, Math.max(N, 30));
     let err = 0; const q = 800, h = L / q;
     for (let i = 0; i < q; i++) { const x = (i + .5) * h; err += (f(x) - eigenSum(fam, c, L, N, x)) ** 2 * h; }
     R.modes = { fam, c, L, err, partial: x => eigenSum(fam, c, L, N, x) };
@@ -34,13 +38,11 @@ $$f(x) = \sum_{n=1}^{\infty} c_n\varphi_n(x),\quad c_n = \frac{\int_0^L f\varphi
   },
   items: {
     modes: { label: '고유함수 전개', auto: true,
-      problem: (cfg, R, { Ls }) => `${fMarkup(cfg)}를 $0 < x < L$ ($L = ${Ls}$)에서 고유함수 $${familyOf(cfg).tex}$ ($n = 1, 2, \\ldots$)로 전개하시오.`,
-      solution(cfg, R, { tol }) {
-        const fam = familyOf(cfg), cs = firstNonzero(n => fineEigen(fam, R.f, R.L, n), 4, tol);
-        const out = [`고유함수 $${fam.tex}$는 $(0, L)$에서 서로 직교하고 $\\int_0^L \\varphi_n^2\\,dx = L/2$이므로`, `$$c_n = \\frac{2}{L}\\int_0^L f(x)${fam.tex}\\,dx$$`];
-        if (cs.length) out.push(valueEq('c', cs.map(n => [n, fineEigen(fam, R.f, R.L, n)])));
-        out.push(EXACT_NOTE);
-        return out;
-      } },
+      problem(cfg, R, { Ls }) {
+        const fam = familyOf(cfg);
+        return fam.radial ? `${fMarkup(cfg)}를 $0 \\le r < R$ ($R = ${Ls}$)에서 고유함수 $${fam.tex}$로 전개하시오(Fourier–Bessel 급수).`
+          : `${fMarkup(cfg)}를 $0 < x < L$ ($L = ${Ls}$)에서 고유함수 $${fam.tex}$ ($n = ${fam.n0}, ${fam.n0 + 1}, \\ldots$)로 전개하시오.${fam.h ? ` (고유함수는 $x = L$에서 $f' + hf = 0$, $h = ${prettyExpr(cfg.hRobin)}$인 조건에서 나온다.)` : ''}`;
+      },
+      solution: (cfg, R, { tol }) => { const fam = familyOf(cfg); return eigenSteps(cfg, R, { fam, tol, fnTex: fam.radial ? 'f(r)' : 'f(x)' }); } },
   },
 });

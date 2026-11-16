@@ -82,6 +82,7 @@ window.STUDIO_SELFTEST = () => {
   // 주제 공통 검사: 등록된 모든 주제의 모든 문제(주제를 더하면 저절로 검사됩니다)
   { const bad = [], n = { problems: 0, draws: 0 }, base = { f: 'x<L/2 ? x : L-x', L: 'pi', N: 9, kDamp: '0.2' };
     const fail = (cfg, what) => bad.push(`${recipeText(cfg)} ${JSON.stringify(cfg.prob)}: ${what}`), junk = s => /undefined|NaN|\[object/.test(s);
+    for (const t of TOPICS) for (const [side, opts] of Object.entries(endOptions(t))) for (const [v, label] of opts) if (!problemsOf(t).some(p => p[side] === v)) bad.push(`${t.id}: ${side} '${label}'을 골라도 남지 않음`);
     for (const t of TOPICS) for (const p of problemsOf(t)) {
       n.problems++;
       try {
@@ -113,6 +114,20 @@ window.STUDIO_SELFTEST = () => {
   check(near(S.R.laplace.u(.5, .5), Math.sinh(PI / 2) / Math.sinh(PI), 1e-6) && near(S.R.laplace.u(.3, 1), Math.sin(.3 * PI), 1e-6), '판의 온도: u = sin(πx)·sinh(πy)/sinh(π)');
   prob('bottom', 'free'); check(near(S.R.laplace.u(.5, 0), 1 / Math.cosh(PI), 1e-6) && recipe().includes('응용') && solutionText('laplace', S.good, S.R).includes('\\cosh'), '아래 변 단열: cosh(πy)/cosh(π)');
   prob('left', 'free'); prob('right', 'free'); set({ f: 'x' }); check(near(S.R.laplace.u(.4, 1), .4, 5e-3) && near(S.R.laplace.c[0], .5, 1e-6) && problemText('laplace', S.good, S.R).includes('단열'), '세 변 단열: 평균 온도 항 c₀ = 1/2');
+  // 열 방출 끝(Robin): kₙ은 tan kL = −k/h의 근
+  { const k1 = robinRoot('sin', 1, 1, 1);
+    reset({ f: `sin(${k1}*x)`, L: '1', alpha: '1', left: '0', N: 20, prob: { eq: 'heat', domain: 'interval', left: 'fixed', right: 'robin' } });
+    check(near(Math.tan(k1), -k1, 1e-9) && near(S.R.heat.u(.5, .1), Math.sin(k1 * .5) * Math.exp(-k1 * k1 * .1), 1e-5) && !!$('f_hRobin') && !$('f_right') && recipe().includes('열 방출') && shown() === 'heat', '막대 끝의 열 방출: kₙ은 tan kL = −k/h의 근, u = sin(k₁x)e^(−k₁²t)');
+    set({ f: '1', left: '1' }); check(near(S.R.heat.limit(1), .5, 1e-9) && solutionText('heat', S.good, S.R).includes('\\tan kL') && problemText('heat', S.good, S.R).includes('열을 내보낸다'), '열 방출 끝의 정상 상태 U = U₁(1 − hx/(1 + hL))');
+    set({ hRobin: '-1' }); check(!$('err').hidden && $('err').textContent.includes('h'), '열 방출 계수가 0 이하면 알림'); set({ hRobin: '1' }); }
+  // 원판: Fourier–Bessel 급수, 원형 막, 원판의 열전도. 입력은 r로 써도 됩니다.
+  { const a1 = besselZero(0, 1);
+    check(near(a1, 2.404825557695773, 1e-7) && near(besselZero(1, 1), 3.831705970207512, 1e-7) && near(besselJ0(1), .7651976865579666, 1e-7), 'Bessel 함수와 근: α₁ = 2.4048, β₁ = 3.8317');
+    reset({ f: '1 - (r/R)^2', L: '1', N: 20, prob: { eq: 'none', domain: 'disk' } });
+    check(recipe().includes('Fourier–Bessel') && shown() === 'modes' && painted() && near(S.R.f(.5), .75, 1e-12) && !$('p_r') && near(S.R.modes.c[1], 8 / (a1 ** 3 * besselJ1(a1)), 1e-5) && problemText('modes', S.good, S.R).includes('f(r)'), 'Fourier–Bessel 급수: 1 − r² 의 a₁ = 8/(α₁³J₁(α₁)), r로 입력');
+    prob('eq', 'wave'); check(recipe().includes('원형 막') && shown() === 'bessel' && painted() && $('problem').textContent.includes('가장자리 r = R: 고정') && near(S.R.wave.u(0, 0), 1, 2e-3) && solutionText('wave', S.good, S.R).includes('정수배가 아니어서'), '원형 막: 위에서 본 모양과 단면, 주기적이지 않음');
+    prob('eq', 'heat'); prob('right', 'free'); const tex0 = $('stageBox').innerHTML; check(!/A<sub>nJ/.test(tex0) && near(S.R.heat.mean, .5, 1e-6) && shown() === 'bessel' && recipe().includes('원판의 열전도'), '원판의 열전도(가장자리 단열): 평균 온도 2∫r f dr/R² = 1/2');
+    prob('domain', 'interval'); check(S.cfg.f === '1 - (x/L)^2' && $('status').textContent.includes('x, L로') && near(S.R.f(.5), .75, 1e-12), '원판에서 다른 영역으로 가면 식의 r, R을 x, L로 바꿈'); }
   // 고유함수 종류 공통 검사: 끝 조건과 직교성(FAMILIES에 줄을 더하면 저절로 검사됩니다)
   { const bad = [], L = 1.3, hD = 1e-6;
     for (const fam of FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' }))) {

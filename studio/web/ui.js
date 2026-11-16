@@ -9,7 +9,7 @@ const CONCEPT_PROBLEM = {
   wave: () => [{ eq: 'wave', domain: 'interval' }], membrane: () => [{ eq: 'wave', domain: 'rect' }], heat: () => [{ eq: 'heat', domain: 'interval' }],
 };
 function select(id) { const [p, look] = CONCEPT_PROBLEM[id](S.cfg); Object.assign(S.cfg.prob, p); if (look) S.cfg.look = look; S.cfg.stage = null; applyProblem(S.cfg); }
-const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
+const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length > 4 ? 3 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
 /** 왼쪽 위 '문제': 고르는 것만(방정식, 영역, 끝·변의 조건, 감쇠). 상수는 '함수와 값', 교재의 절은 그래프 위 단계 줄에 있습니다. */
 function problemHtml(cfg) {
   const p = cfg.prob, heat = p.eq === 'heat', eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
@@ -49,8 +49,13 @@ function changeProblem(key, value) {
   pushUndo();
   const p = S.cfg.prob, before = { domain: p.domain, role: roleOf(S.cfg) };
   if (key === 'ends') p.left = p.right = value; else if (key === 'damp') p.damp = value === 'on'; else p[key] = value;
-  normalizeProblem(p); S.cfg.stage = null; applyProblem(S.cfg);
+  normalizeProblem(p); S.cfg.stage = null;
+  // 원판에서 쓰던 글자(r, R)는 다른 영역에서 x, L로 바꿔 둡니다.
+  const was = { f: S.cfg.f, g: S.cfg.g }, renamed = p.domain !== before.domain && DOMAINS.find(d => d.id === before.domain).vars;
+  if (renamed) for (const k of ['f', 'g']) S.cfg[k] = srcOf({ ...S.cfg, prob: { domain: before.domain } }, k);
+  applyProblem(S.cfg);
   const notes = [], role = roleOf(S.cfg);
+  if (renamed && (S.cfg.f !== was.f || S.cfg.g !== was.g)) notes.push('식의 r, R을 x, L로 바꿨습니다.');
   if (key !== 'domain' && p.domain !== before.domain) notes.push(`영역을 ${domainLabel(p.domain)}(으)로 바꿨습니다.`);
   if (role !== before.role) notes.push(`입력한 f(x)는 이제 ${role}입니다.`);
   setStatus(`${notes.join(' ') || `문제: ${recipeText(S.cfg)}`}`, { label: '되돌리기', fn: undo });
@@ -101,7 +106,7 @@ function undo() {
 }
 
 /* ── 설정 화면 ─────────────────────────────────────── */
-const hintOf = cfg => halfDomain(cfg) ? '(0, L)에서의 함수. 예: x*(L-x), sin(pi*x/L), sin x' : '예: x^2, sign(x), abs(x), 2 sin x + 1';
+const hintOf = cfg => cfg.prob?.domain === 'disk' ? '반지름 방향 함수. r(또는 x)과 R로 씁니다. 예: 1 - (r/R)^2, cos(pi*r/(2*R))' : halfDomain(cfg) ? '(0, L)에서의 함수. 예: x*(L-x), sin(pi*x/L), sin x' : '예: x^2, sign(x), abs(x), 2 sin x + 1';
 function fieldHtml(field, cfg) {
   const { k, label, hint } = field, id = `f_${k}`;
   if (field.type === 'seg') return `<div class="fld"><span class="flabel">${label}</span><div class="seg" style="--n:${field.options.length}">${field.options.map(([value, text]) => `<button type="button" data-seg="${k}" data-value="${value}" aria-pressed="${cfg[k] === value}">${text}</button>`).join('')}</div></div>`;
@@ -147,7 +152,7 @@ function renderSettings() {
 /** 수식에 새 글자를 쓰면 그 글자의 값을 넣는 칸이 생깁니다. */
 function renderParams(force) {
   const cfg = S.cfg, names = new Set();
-  for (const key of ['f', ...(cfg.on.wave ? ['g'] : [])]) { try { compile(String(cfg[key])).params.forEach(p => names.add(p)); } catch { /* 입력 중인 수식 */ } }
+  for (const key of ['f', ...(cfg.on.wave ? ['g'] : [])]) { try { compile(srcOf(cfg, key)).params.forEach(p => names.add(p)); } catch { /* 입력 중인 수식 */ } }
   const list = [...names], fresh = list.filter(p => !S.knownParams.has(p));
   for (const p of list) if (!(p in cfg.params)) cfg.params[p] = 1;
   if (!force && fresh.length) setStatus(`수식의 ${fresh.map(p => `'${p}'`).join(', ')}를 변수로 만들었습니다(값 ${fresh.map(p => cfg.params[p]).join(', ')}). 오타라면 수식을 고치십시오.`);
@@ -224,7 +229,7 @@ function draw() {
   }
   S.drawingKey = '';
   if (S.tab === 'summary') renderTabs(false);
-  $('tOut').textContent = ['wave', 'membrane', 'heat'].filter(id => cfg.on[id] && S.R[id]).map(id => `${{ wave: '현', membrane: '막', heat: '막대' }[id]} t = ${fmt(timeOf(S.R[id], cfg), 3)}`).join(' · ');
+  $('tOut').textContent = ['wave', 'membrane', 'heat'].filter(id => cfg.on[id] && S.R[id]).map(id => `${(cfg.prob?.domain === 'disk' ? { wave: '막', heat: '원판' } : { wave: '현', membrane: '막', heat: '막대' })[id]} t = ${fmt(timeOf(S.R[id], cfg), 3)}`).join(' · ');
   $('tSlider').value = S.cfg.s;
 }
 /** 그래프 위의 펜 자국, 점 표시, 마우스 위치 세로선을 그립니다(그래프와 따로 지웁니다). */
@@ -294,7 +299,7 @@ function exampleTabHtml() {
   const figs = figuresHtml();
   return exampleBody(d, kinds, items, figs);
 }
-const SETUP_KEYS = ['f', 'L', 'N', 'params', 'prob', 'look', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M'];
+const SETUP_KEYS = ['f', 'L', 'N', 'params', 'prob', 'look', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M', 'hRobin'];
 /** 그림을 담은 뒤 함수나 개념 설정이 바뀌었는지 봅니다(시간, 확대는 그림마다 다를 수 있어 보지 않습니다). */
 const sameSetup = (a, b) => SETUP_KEYS.every(k => JSON.stringify(a?.[k]) === JSON.stringify(b?.[k]));
 /** 문장을 직접 고쳤는데 자동 풀이가 켜져 있으면, 풀이가 설정의 함수 기준이라는 것을 알립니다. */

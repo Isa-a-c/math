@@ -62,7 +62,7 @@ $$u(x,y) = \sum_{n=1}^{\infty} A_n\sin\frac{n\pi x}{a}\sinh\frac{n\pi y}{a},\qua
         const P = R.laplace, fam = P.fam, G = P.bottom === 'fixed' ? '\\sinh' : '\\cosh';
         return [`$u = F(x)G(y)$로 놓으면 $F'' + k^2F = 0$, $G'' - k^2G = 0$입니다. $x$ 방향 경계조건(${fam.title.replace(/x = L/g, 'x = a')})에서 고유함수와 고유값이 정해지고, 아래 변 조건 ${P.bottom === 'fixed' ? '$u(x,0) = 0$' : '$u_y(x,0) = 0$'}에서 $G_n = ${G} k_{n}y$입니다.`,
           ...eigenSteps(cfg, R, { fam, what: '위쪽 변의 온도 $f(x)$', tol }),
-          `$$u(x,y) = \\sum_{n} c_n${fam.tex}\\,\\frac{${G} k_{n}y}{${G} k_{n}b}$$`,
+          `$$u(x,y) = \\sum_{n} c_{n}${fam.tex}\\,\\frac{${G} k_{n}y}{${G} k_{n}b}$$`,
           `판 가운데 온도는 $u(a/2, b/2) \\approx ${fmt(P.u(P.a / 2, P.b / 2), 4)}$입니다.`];
       } },
   },
@@ -82,8 +82,8 @@ defineTopic({
     const side = (x, s) => s === 'fixed' ? `u(${x},y) = 0` : `u_x(${x},y) = 0`;
     return [
       { id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: String.raw`$u = F(x)G(y)$로 놓으면 $F'' + k^2F = 0$, $G'' - k^2G = 0$입니다. 옆 변 조건 $${side('0', p.left)},\ ${side('a', p.right)}$에서 $k_n = ${fam.kTex.replace(/L/g, 'a')}$, $F_n = ${fam.tex.replace(/L/g, 'a')}$이고, 아래 변 조건 $${p.bottom === 'fixed' ? 'u(x,0) = 0' : 'u_y(x,0) = 0'}$에서 $G_n = ${G} k_{n}y$입니다.` },
-      { id: 'expand', title: '위쪽 변 온도의 전개', panel: mixed ? 'modes' : lookPanel(cfg), look: !mixed, md: String.raw`$f(x) = u(x, b) = \sum_{n} c_n${fam.tex.replace(/L/g, 'a')}$, $c_n = \frac{2}{a}\int_0^a f(x)${fam.tex.replace(/L/g, 'a')}\,dx$` },
-      { id: 'solve', title: '해', panel: 'laplace', md: String.raw`$u(x,y) = \sum_{n} c_n${fam.tex.replace(/L/g, 'a')}\,\frac{${G} k_{n}y}{${G} k_{n}b}$. 높은 차수일수록 아래로 빨리 줄어듭니다.` },
+      { id: 'expand', title: '위쪽 변 온도의 전개', panel: mixed ? 'modes' : lookPanel(cfg), look: !mixed, md: String.raw`$f(x) = u(x, b) = \sum_{n} c_{n}${fam.tex.replace(/L/g, 'a')}$, $c_n = \frac{2}{a}\int_0^a f(x)${fam.tex.replace(/L/g, 'a')}\,dx$` },
+      { id: 'solve', title: '해', panel: 'laplace', md: String.raw`$u(x,y) = \sum_{n} c_{n}${fam.tex.replace(/L/g, 'a')}\,\frac{${G} k_{n}y}{${G} k_{n}b}$. 높은 차수일수록 아래로 빨리 줄어듭니다.` },
     ];
   },
 });

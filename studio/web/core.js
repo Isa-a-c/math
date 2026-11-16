@@ -17,6 +17,7 @@ const DEFAULTS = {
   X: '8', s: 0,
   jumpIndex: 1, waveEnds: 'fixed', damping: '0', kDamp: '0.3',   // 도약점 선택, 현의 끝(고정/자유), 감쇠 k(문제에 감쇠가 있을 때 kDamp)
   wMax: '10',                                             // Fourier 적분의 위끝 a
+  hRobin: '1',                                             // 열 방출(Robin) 끝: u_x + hu = 0
   b: '1', h: 'y<b/2 ? y : b-y', M: 8,                     // 막: 세로 길이 b, 처음 모양의 y 방향 h(y), 모드 수
   xMin: '', xMax: '', yMin: '', yMax: '', tEndWave: '', tEndHeat: '',      // 비우면 자동
 };
@@ -56,9 +57,11 @@ function rangeOf(cfg, a, b, label, L) {
   if (!(hi > lo)) throw new Error(`${label}: 끝값이 시작값보다 커야 합니다.`);
   return [lo, hi];
 }
+/** 영역이 정한 글자를 바꾼 식입니다(원판: r → x, R → L). */
+const srcOf = (cfg, key) => { let s = String(cfg[key]); for (const [a, b] of DOMAINS.find(d => d.id === cfg.prob?.domain)?.vars ?? []) s = s.replace(new RegExp(`\\b${a}\\b`, 'g'), b); return s; };
 function fnOf(cfg, key, label, L) {
   let c;
-  try { c = compile(String(cfg[key])); } catch (e) { throw new Error(`${label}: ${e.message} (예: x^2, sin x, |x|, x<0 ? -1 : 1)`); }
+  try { c = compile(srcOf(cfg, key)); } catch (e) { throw new Error(`${label}: ${e.message} (예: x^2, sin x, |x|, x<0 ? -1 : 1)`); }
   const P = { ...cfg.params, L };
   return x => c.fn(x, P);
 }
@@ -260,7 +263,9 @@ const piecesExpr = pieces => pieces.slice(0, -1).reduceRight((rest, p) => `x<${p
 const halfDomain = cfg => cfg.on.half || cfg.on.modes || cfg.on.laplace || needsHalf(cfg);
 const toPieces = (f, cfg) => { const p = piecesOf(f); return p && p.length > 1 ? p : [{ until: halfDomain(cfg) ? 'L/2' : '0', expr: f }, { until: null, expr: f }]; };
 /** 함수를 문서용 글로 씁니다. 구간별이면 구간마다 식과 범위를 씁니다. */
-function fMarkup(cfg) {
+/** 함수를 문서용 글로 씁니다. 원판이면 f(r)로 씁니다. */
+const fMarkup = cfg => { const s = fMarkupX(cfg); return cfg.prob?.domain === 'disk' ? s.replace('$f(x) = ', '$f(r) = ') : s; };
+function fMarkupX(cfg) {
   const rows = piecewiseRows(cfg, halfDomain(cfg));
   if (rows && rows.length > 1) return rows.map((r, i) => `${i ? '' : '$f(x) = $ '}$${polyTex(r.poly)}$ ($${piTex(r.lo)} \\le x < ${piTex(r.hi)}$)`).join(', ');
   const pieces = piecesOf(cfg.f), pe = s => prettyExpr(s, cfg.params);

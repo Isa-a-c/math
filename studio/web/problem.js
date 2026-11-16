@@ -15,6 +15,8 @@ const DOMAINS = [
   { id: 'line', label: '직선 (−∞, ∞)', where: '−∞ < x < ∞' },
   { id: 'rect', label: '직사각형', where: '0 < x < a (a = L)', lLabel: '가로 길이 a = L', why: '직사각형 영역은 파동(막의 진동)과 라플라스 방정식(정상 상태 온도)에 있습니다.',
     sides: [['left', 'x = 0 변'], ['right', 'x = a 변'], ['bottom', 'y = 0 변']] },
+  { id: 'disk', label: '원판 (반지름 r)', where: '0 ≤ r < R (R = L)', lLabel: '반지름 R = L', why: '원판은 Fourier–Bessel 급수, 원형 막, 원판의 열전도에 있습니다.',
+    sides: [['right', '가장자리 r = R']], vars: [['r', 'x'], ['R', 'L']] },
 ];
 /** 경계 조건을 담는 문제의 칸입니다. 어느 칸을 고르게 할지는 영역(sides)과 주제(ends)가 정합니다. */
 const SIDE_KEYS = ['left', 'right', 'bottom'];
@@ -37,7 +39,7 @@ function normalizeProblem(p) {
   if (!domainOk(p.eq, p.domain)) p.domain = domainOk(p.eq, 'interval') ? 'interval' : TOPICS.find(t => t.eq === p.eq).domain;
   const t = topicFor(p.eq, p.domain), opts = endOptions(t);
   for (const k of SIDE_KEYS) if (!(opts[k] ?? []).some(([v]) => v === p[k])) p[k] = opts[k]?.[0][0] ?? 'fixed';
-  if (!t.mixed) p.right = p.left;
+  if (!t.mixed && opts.left) p.right = p.left;   // 양 끝을 고르는 주제만(원판은 가장자리 하나)
   p.damp = !!p.damp && !!t.damp;
   return p;
 }
@@ -91,18 +93,20 @@ function problemFromAxes(ax, cfg) {
 /** 전개 단계에서 고른 그래프입니다. */
 const lookPanel = cfg => ({ coef: 'coef', spectrum: 'spectrum', gibbs: 'gibbs' }[cfg.look] ?? 'series');
 const INTEGRAL_MD = String.raw`$f(x) = \int_0^{\infty}[A(w)\cos wx + B(w)\sin wx]\,dw$, $A(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\cos wv\,dv$, $B(w) = \frac{1}{\pi}\int_{-\infty}^{\infty} f(v)\sin wv\,dv$`;
-/** 구간 (0, L)의 파동·열: 변수분리와 고유값 문제 → 초기조건의 전개 → 해. 수식은 양 끝 조건이 정한 고유함수 종류에서 만듭니다. */
-function intervalStages(cfg, heat) {
-  const p = cfg.prob, fam = familyFor(p.left, p.right), mixed = p.left !== p.right, phi = fam.tex, c0 = fam.n0 === 0, A = c0 ? 'A' : 'B';
-  const endTex = (x, side, i) => side === 'fixed' ? (heat ? `u(${x},t) = U_${i}` : `u(${x},t) = 0`) : `u_x(${x},t) = 0`;
-  const bc = `${endTex('0', p.left, 1)},\\ ${endTex('L', p.right, 2)}`;
+/** 고유함수로 푸는 파동·열(구간, 원판): 변수분리와 고유값 문제 → 초기조건의 전개 → 해. 수식은 고유함수 종류(eigen.js)에서 만듭니다. */
+function eigenStages(cfg, heat) {
+  const p = cfg.prob, fam = familyOf(cfg), classic = fam.id === 'sine' || fam.id === 'cosine', c0 = fam.n0 === 0, A = c0 ? 'A' : 'B', phi = fam.tex;
+  const v = fam.radial ? 'r' : 'x', E = fam.radial ? 'R' : 'L';
+  let Lv = NaN; try { Lv = constant(cfg.L, 1); } catch { /* 입력 중 */ }
+  const endTex = i => { const e = fam.ends[i], x = i ? E : '0'; return e === 'center' ? String.raw`|u(0,t)| < \infty` : e === 'fixed' ? (heat ? `u(${x},t) = U${fam.radial ? '' : `_${i + 1}`}` : `u(${x},t) = 0`) : e === 'robin' ? `u_${v}(${x},t) + hu(${x},t) = 0` : `u_${v}(${x},t) = 0`; };
+  const steadyNote = heat && fam.ends.includes('fixed') ? `. 끝 온도가 0이 아니면 정상 상태 $U(${v})$를 뺀 $f - U$를 전개합니다.` : '';
   return [
-    { id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: String.raw`$u = F(x)G(t)$로 놓으면 $F'' + k^2F = 0$, $${heat ? `G' + c^2k^2G = 0` : `G'' + c^2k^2G = 0`}$입니다. 경계조건 $${bc}$에서 $k_n = ${fam.kTex}$, $F_n = ${phi}$${c0 ? String.raw` ($n = 0, 1, 2, \ldots$)` : ''}입니다.` },
-    { id: 'expand', title: heat ? '초기 온도의 전개' : '초기 변위의 전개', panel: mixed ? 'modes' : lookPanel(cfg), look: !mixed,
-      md: String.raw`$f(x) = ${c0 ? 'A_0 + ' : ''}\sum_{n=1}^{\infty} ${A}_n${phi}$, $${A}_n = \frac{2}{L}\int_0^L f(x)${phi}\,dx$${heat && !c0 ? '. 끝 온도가 0이 아니면 정상 상태 $U(x)$를 뺀 $f - U$를 전개합니다.' : ''}` },
-    { id: 'solve', title: '해', panel: heat ? 'heat' : 'wave', md: heat
-      ? String.raw`$u(x,t) = ${c0 ? 'A_0' : 'U(x)'} + \sum_{n=1}^{\infty} ${A}_n${phi}\,e^{-\lambda_n^2 t}$, $\lambda_n = ck_n$${c0 ? '. 온도는 평균 $A_0$으로 갑니다.' : ''}`
-      : String.raw`$u(x,t) = ${c0 ? 'A_0 + ' : ''}\sum_{n=1}^{\infty}(${A}_n\cos\lambda_n t + ${A}_n^*\sin\lambda_n t)${phi}$, $\lambda_n = ck_n$${p.damp ? String.raw`. 감쇠가 있으면($u_{tt} + 2ku_t = c^2u_{xx}$) 모드마다 $e^{-kt}$가 곱해지고 진동수는 $\sqrt{\lambda_n^2 - k^2}$로 줄어듭니다.` : ''}` },
+    { id: 'separate', title: '변수분리와 고유값 문제', panel: 'eigen', md: `$u = F(${v})G(t)$로 놓으면 $${fam.ode ?? "F'' + k^2F = 0"}$, $${heat ? "G' + c^2k^2G = 0" : "G'' + c^2k^2G = 0"}$입니다. 경계조건 $${endTex(0)},\\ ${endTex(1)}$에서 $F_n = ${phi}$${c0 ? String.raw` ($n = 0, 1, 2, \ldots$)` : ''}이고, ${fam.kMd ? fam.kMd(Lv) : `$k_n = ${fam.kTex}$입니다.`}` },
+    { id: 'expand', title: heat ? '초기 온도의 전개' : '초기 변위의 전개', panel: classic ? lookPanel(cfg) : 'modes', look: classic,
+      md: `$f(${v}) = ${c0 ? 'A_0 + ' : ''}\\sum_{n=1}^{\\infty} ${A}_{n}${phi}$, $${coefTexOf(fam, A, `f(${v})`)}$${steadyNote}` },
+    { id: 'solve', title: '해', panel: fam.radial ? 'bessel' : heat ? 'heat' : 'wave', md: heat
+      ? `$u(${v},t) = ${c0 ? 'A_0' : `U(${v})`} + \\sum_{n=1}^{\\infty} ${A}_{n}${phi}\\,e^{-\\lambda_n^2 t}$, $\\lambda_n = ck_n$${c0 ? '. 온도는 평균 $A_0$으로 갑니다.' : ''}`
+      : `$u(${v},t) = ${c0 ? 'A_0 + ' : ''}\\sum_{n=1}^{\\infty}(${A}_n\\cos\\lambda_n t + ${A}_n^*\\sin\\lambda_n t)${phi}$, $\\lambda_n = ck_n$${p.damp ? String.raw`. 감쇠가 있으면($u_{tt} + 2ku_t = c^2u_{xx}$) 모드마다 $e^{-kt}$가 곱해지고 진동수는 $\sqrt{\lambda_n^2 - k^2}$로 줄어듭니다.` : ''}${fam.harmonic ? '' : String.raw`. $\lambda_n$이 $\lambda_1$의 정수배가 아니어서 주기적이지 않습니다.`}` },
   ];
 }
 /** 문제의 풀이 단계: {id, title, md(교재 수식, $…$), panel(그래프), look(전개 단계), fields}. */
