@@ -63,7 +63,7 @@ const fx = '<i>f</i>(<i>x</i>)', uxt = '<i>u</i>(<i>x</i>, <i>t</i>)', pinLabel 
 /** 개념 모듈(modules/*.js)이 PANELS에 자기 그래프를 넣고, 여기서는 여러 주제가 함께 쓰는 고유함수 그래프만 넣습니다. */
 Object.assign(PANELS, {
   eigen(ctx, w, h, C, cfg, R) {
-    const p = cfg.prob ?? { domain: 'periodic', left: 'fixed' }, fam = familyFor(p.left ?? 'fixed', p.right ?? p.left ?? 'fixed'), L = R.L, b = box(w, h, C), periodic = p.domain === 'periodic', k = n => n * PI / L;
+    const p = cfg.prob ?? { domain: 'periodic', left: 'fixed' }, fam = familyOf(cfg), L = R.L, b = box(w, h, C), periodic = p.domain === 'periodic', k = n => n * PI / L;
     const name = (fn, n) => `${fn}(${n > 1 ? n : ''}π<i>x</i>/<i>L</i>)`;
     const fns = periodic ? [[name('cos', 1), x => Math.cos(k(1) * x)], [name('sin', 1), x => Math.sin(k(1) * x)], [name('cos', 2), x => Math.cos(k(2) * x)], [name('sin', 2), x => Math.sin(k(2) * x)]]
       : [0, 1, 2, 3].map(i => fam.n0 + i).map(n => [fam.label(n), x => fam.phi(n, x, L)]);
@@ -71,7 +71,7 @@ Object.assign(PANELS, {
     const colors = [C.blue, C.hot, C.green, C.muted], vars = ['--blue', '--hot', '--green', '--muted'];
     fns.forEach(([, fn], i) => curve(ctx, fn, b, xr, M, colors[i], i ? 2 : 3));
     if (!periodic) fam.ends.forEach((e, i) => { if (e === 'fixed') dot(ctx, M.X(i ? L : 0), M.Y(0), C.ink, C, 5); });
-    const title = periodic ? '기저 함수 (한 주기에서 직교)' : p.domain === 'rect' ? 'x 방향 고유함수 (가장자리 고정)' : `고유함수: ${fam.title}`;
+    const title = periodic ? '기저 함수 (한 주기에서 직교)' : p.domain === 'rect' ? `x 방향 고유함수: ${fam.title.replace(/x = L/g, 'x = a')}` : `고유함수: ${fam.title}`;
     return { title, frame: { b, xr, yr }, legend: fns.map(([n], i) => [vars[i], n]), probe: x => fns.map(([n, fn]) => [n.replace(/<[^>]+>/g, ''), fn(x)]) };
   },
 });

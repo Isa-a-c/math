@@ -18,6 +18,19 @@ const symMarkup = model => model.sym === 'odd' ? '기함수이므로 $a_n = 0$�
 const firstNonzero = (get, count, tol) => { const out = []; for (let n = 1; n <= NMAX && out.length < count; n++) if (Math.abs(get(n)) >= tol) out.push(n); return out; };
 const valueEq = (name, pairs) => `$$${pairs.map(([n, v]) => { const e = exact(v); return `${name}_{${n}} ${rel(e)} ${e.text}`; }).join(',\\quad ')},\\ \\ldots$$`;
 const EXACT_NOTE = '= 로 적은 값은 수치 적분 결과와 맞는 정확한 꼴이고, ≈ 로 적은 값은 근삿값입니다. 출제 전에 확인하십시오.';
+/** 고유함수 전개의 풀이 줄: 고유함수와 고유값 → 계수 식 → (닫힌 꼴) → 계수 값. 모든 고유함수 종류에 같은 틀을 씁니다.
+    fn: 전개할 함수(기본 f), sym: 닫힌 꼴 계산에 넘길 [빼는 직선, 뺀 함수](f − U를 전개할 때). */
+function eigenSteps(cfg, R, { fam, fn = R.f, what = '$f(x)$', name = 'c', fnTex = 'f(x)', tol, sym }) {
+  const L = R.L, out = [], tx = fam.tex;
+  out.push(`${what}를 고유함수 $\\varphi_n = ${tx}$로 전개합니다. ${fam.kMd ? fam.kMd(L) : `$k_n = ${fam.kTex}$입니다.`}`);
+  out.push(fam.coefTex ? `$$${fam.coefTex(name, fnTex)}$$` : `$$${name}_n = \\frac{2}{L}\\int_0^L ${fnTex}${tx}\\,dx${fam.n0 === 0 ? `,\\quad ${name}_0 = \\frac{1}{L}\\int_0^L ${fnTex}\\,dx` : ''}$$`);
+  if ((fam.id === 'sine' || fam.id === 'cosine') && (fn === R.f || sym)) { const s = symbolicFor({ ...cfg, on: { ...cfg.on, half: true } }, R, fam.id, ...(sym ?? [])); if (s) out.push(symbolicSteps(s, fam.id, { a0: `${name}_0`, a: `${name}_n`, b: `${name}_n` })); }
+  if (fam.n0 === 0) { const e0 = exact(fineEigen(fam, fn, L, 0)); out.push(`$$${name}_0 ${rel(e0)} ${e0.text}$$`); }
+  const ns = firstNonzero(n => fineEigen(fam, fn, L, n), 4, tol);
+  if (ns.length) out.push(valueEq(name, ns.map(n => [n, fineEigen(fam, fn, L, n)])));
+  out.push(EXACT_NOTE);
+  return out;
+}
 /** 급수 계수 a₀, aₙ, bₙ의 값 줄입니다. */
 function coefLines(model, tol) {
   const out = [];

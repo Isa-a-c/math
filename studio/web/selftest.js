@@ -107,6 +107,12 @@ window.STUDIO_SELFTEST = () => {
       } catch (err) { fail(S.cfg, err.message); }
     }
     check(!bad.length && n.problems > 20, `주제 공통 검사: 주제 ${TOPICS.length}개, 문제 ${n.problems}가지, 그래프 ${n.draws}장의 단계·그래프·값 읽기·요약·소문항·저장${bad.length ? ` (${bad.length}건: ${bad.slice(0, 3).join(' / ')})` : ''}`); }
+  // 라플라스 방정식: 직사각형 판(세 변 + 위쪽 변의 온도)
+  reset({ f: 'sin(pi*x/L)', L: '1', b: '1', N: 20, prob: { eq: 'laplace', domain: 'periodic' } });
+  check(S.cfg.prob.domain === 'rect' && $$('#problem [data-prob="bottom"]').length === 2 && $('problem').textContent.includes('위쪽 변 y = b') && !!$('f_b') && $('transport').hidden && recipe().includes('Dirichlet') && shown() === 'laplace' && painted(), '라플라스 방정식: 직사각형으로 바꾸고, 세 변을 고르게 하며 시간 재생은 숨김');
+  check(near(S.R.laplace.u(.5, .5), Math.sinh(PI / 2) / Math.sinh(PI), 1e-6) && near(S.R.laplace.u(.3, 1), Math.sin(.3 * PI), 1e-6), '판의 온도: u = sin(πx)·sinh(πy)/sinh(π)');
+  prob('bottom', 'free'); check(near(S.R.laplace.u(.5, 0), 1 / Math.cosh(PI), 1e-6) && recipe().includes('응용') && solutionText('laplace', S.good, S.R).includes('\\cosh'), '아래 변 단열: cosh(πy)/cosh(π)');
+  prob('left', 'free'); prob('right', 'free'); set({ f: 'x' }); check(near(S.R.laplace.u(.4, 1), .4, 5e-3) && near(S.R.laplace.c[0], .5, 1e-6) && problemText('laplace', S.good, S.R).includes('단열'), '세 변 단열: 평균 온도 항 c₀ = 1/2');
   // 고유함수 종류 공통 검사: 끝 조건과 직교성(FAMILIES에 줄을 더하면 저절로 검사됩니다)
   { const bad = [], L = 1.3, hD = 1e-6;
     for (const fam of FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' }))) {

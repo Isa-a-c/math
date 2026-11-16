@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const DEFAULTS = {
   f: 'sign(x)', L: 'pi', N: 9, params: {},
-  prob: { eq: 'none', domain: 'periodic', left: 'fixed', right: 'fixed', damp: false },   // 문제(problem.js). on 등은 여기서 만들어집니다.
+  prob: { eq: 'none', domain: 'periodic', left: 'fixed', right: 'fixed', bottom: 'fixed', damp: false },   // 문제(problem.js). on 등은 여기서 만들어집니다.
   look: 'partial', stage: null,   // 전개 단계에서 볼 그래프, 그래프로 보는 풀이 단계(null이면 마지막 단계)
   on: Object.fromEntries(CONCEPTS.map(c => [c.id, c.id === 'series'])),   // 쓰는 개념 모듈(주제가 정함)
   fMode: 'single', pieces: [],   // 구간별 입력이면 pieces로 f를 만듭니다.
@@ -257,7 +257,7 @@ function piecesOf(text) {
   return out;
 }
 const piecesExpr = pieces => pieces.slice(0, -1).reduceRight((rest, p) => `x<${p.until} ? ${p.expr} : ${rest}`, pieces.at(-1).expr);
-const halfDomain = cfg => cfg.on.half || cfg.on.modes || needsHalf(cfg);
+const halfDomain = cfg => cfg.on.half || cfg.on.modes || cfg.on.laplace || needsHalf(cfg);
 const toPieces = (f, cfg) => { const p = piecesOf(f); return p && p.length > 1 ? p : [{ until: halfDomain(cfg) ? 'L/2' : '0', expr: f }, { until: null, expr: f }]; };
 /** 함수를 문서용 글로 씁니다. 구간별이면 구간마다 식과 범위를 씁니다. */
 function fMarkup(cfg) {

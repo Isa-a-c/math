@@ -10,13 +10,15 @@ const CONCEPT_PROBLEM = {
 };
 function select(id) { const [p, look] = CONCEPT_PROBLEM[id](S.cfg); Object.assign(S.cfg.prob, p); if (look) S.cfg.look = look; S.cfg.stage = null; applyProblem(S.cfg); }
 const segRow = (label, key, list, value, why = () => '') => `<div class="fld"><span class="flabel">${label}</span><div class="seg" role="group" aria-label="${label}" style="--n:${list.length === 4 ? 2 : list.length}">${list.map(([v, t]) => { const no = why(v); return `<button type="button" data-prob="${key}" data-value="${v}" aria-pressed="${value === v}"${no ? ` disabled title="${esc(no)}"` : ''}>${t}</button>`; }).join('')}</div></div>`;
-/** 왼쪽 위 '문제': 고르는 것만(방정식, 영역, 양 끝 조건, 감쇠). 상수는 '함수와 값', 교재의 절은 그래프 위 단계 줄에 있습니다. */
+/** 왼쪽 위 '문제': 고르는 것만(방정식, 영역, 끝·변의 조건, 감쇠). 상수는 '함수와 값', 교재의 절은 그래프 위 단계 줄에 있습니다. */
 function problemHtml(cfg) {
   const p = cfg.prob, heat = p.eq === 'heat', eqTex = EQUATIONS.find(e => e.id === p.eq).tex;
   let html = segRow('방정식', 'eq', EQUATIONS.map(e => [e.id, e.label]), p.eq) + (eqTex ? `<p class="eqline">${tex(eqTex).h}</p>` : '')
     + segRow('영역', 'domain', DOMAINS.map(d => [d.id, d.label]), p.domain, v => domainOk(p.eq, v) ? '' : DOMAINS.find(d => d.id === v).why ?? '이 방정식에는 아직 없습니다.');
   const t = topicOf(cfg);
-  if (t.ends) html += segRow('x = 0 끝', 'left', t.ends, p.left) + segRow('x = L 끝', 'right', t.ends, p.right);
+  const opts = endOptions(t);
+  for (const [side, label] of DOMAINS.find(d => d.id === p.domain).sides ?? []) if (opts[side]) html += segRow(label, side, opts[side], p[side]);
+  if (t.note) html += `<p class="hint">${esc(t.note(p))}</p>`;
   if (t.damp) html += segRow('감쇠', 'damp', [['off', '없음'], ['on', '있음']], p.damp ? 'on' : 'off');
   return html;
 }

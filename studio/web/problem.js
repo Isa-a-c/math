@@ -1,5 +1,5 @@
 'use strict';
-/* 문제 모델. 문제 = 방정식 × 영역 × 양 끝 조건 × 감쇠.
+/* 문제 모델. 문제 = 방정식 × 영역 × 경계 조건(영역이 정한 끝·변마다) × 감쇠.
    무엇을 풀 수 있는지, 쓰는 개념, 입력 칸, 풀이 단계, 교재의 절은 주제(modules/*.js의 defineTopic)가 정합니다.
    이 파일은 방정식·영역의 이름, 주제 찾기, 문제를 고치는 규칙, 계산용 값 만들기(applyProblem), 예전 파일 읽기, 주제들이 함께 쓰는 단계 도우미입니다.
    표현(사인·코사인 급수, 적분)은 고르지 않고 영역과 양 끝 조건에서 정해집니다. */
@@ -7,13 +7,17 @@ const EQUATIONS = [
   { id: 'none', label: '없음 (함수 전개)', role: '함수 f(x)' },
   { id: 'wave', label: '파동 방정식', tex: 'u_{tt} = c^2 u_{xx}', role: '초기 변위 f(x) = u(x, 0)' },
   { id: 'heat', label: '열 방정식', tex: 'u_t = c^2 u_{xx}', role: '초기 온도 f(x) = u(x, 0)' },
+  { id: 'laplace', label: '라플라스 (정상 상태)', tex: 'u_{xx} + u_{yy} = 0', role: '위쪽 변의 온도 f(x)' },
 ];
 const DOMAINS = [
   { id: 'periodic', label: '주기 (−L, L)', where: '한 주기 −L < x < L', lLabel: '반주기 L (주기 2L)', why: '주기 영역은 함수 전개(방정식 없음)에만 씁니다.' },
-  { id: 'interval', label: '구간 (0, L)', where: '0 < x < L', lLabel: '길이 L' },
+  { id: 'interval', label: '구간 (0, L)', where: '0 < x < L', lLabel: '길이 L', sides: [['left', 'x = 0 끝'], ['right', 'x = L 끝']] },
   { id: 'line', label: '직선 (−∞, ∞)', where: '−∞ < x < ∞' },
-  { id: 'rect', label: '직사각형', where: '0 < x < a (a = L)', lLabel: '막의 가로 길이 a = L', why: '직사각형 영역은 파동 방정식(막의 진동)만 있습니다.' },
+  { id: 'rect', label: '직사각형', where: '0 < x < a (a = L)', lLabel: '가로 길이 a = L', why: '직사각형 영역은 파동(막의 진동)과 라플라스 방정식(정상 상태 온도)에 있습니다.',
+    sides: [['left', 'x = 0 변'], ['right', 'x = a 변'], ['bottom', 'y = 0 변']] },
 ];
+/** 경계 조건을 담는 문제의 칸입니다. 어느 칸을 고르게 할지는 영역(sides)과 주제(ends)가 정합니다. */
+const SIDE_KEYS = ['left', 'right', 'bottom'];
 const topicFor = (eq, domain) => TOPICS.find(t => t.eq === eq && t.domain === domain);
 const topicOf = cfg => topicFor(cfg.prob.eq, cfg.prob.domain);
 const domainOk = (eq, domain) => !!topicFor(eq, domain);
@@ -27,12 +31,12 @@ const recipeOf = cfg => topicOf(cfg).name(cfg.prob);
 const recipeText = cfg => { const [ch, name] = recipeOf(cfg); return `${ch ?? '응용'} · ${name}`; };
 /** 입력한 f(x)의 뜻과 구간입니다. 문제를 바꾸면 화면에 함께 바뀝니다. */
 const roleOf = cfg => topicOf(cfg).role?.(cfg.prob) ?? `${EQUATIONS.find(e => e.id === cfg.prob.eq).role}, ${DOMAINS.find(d => d.id === cfg.prob.domain).where}`;
-/** 풀 수 없는 조합을 고칩니다: 방정식에 없는 영역은 구간으로, 양 끝·감쇠는 주제가 허락할 때만(양 끝이 다른 조건은 mixed인 주제만). */
+/** 풀 수 없는 조합을 고칩니다: 방정식에 없는 영역은 구간으로, 끝·변의 조건과 감쇠는 주제가 허락한 것만(양 끝이 다른 조건은 mixed인 주제만). */
 function normalizeProblem(p) {
   if (!EQUATIONS.some(e => e.id === p.eq)) p.eq = 'none';
   if (!domainOk(p.eq, p.domain)) p.domain = domainOk(p.eq, 'interval') ? 'interval' : TOPICS.find(t => t.eq === p.eq).domain;
-  const t = topicFor(p.eq, p.domain);
-  for (const k of ['left', 'right']) if (p[k] !== 'free' || !t.ends) p[k] = 'fixed';
+  const t = topicFor(p.eq, p.domain), opts = endOptions(t);
+  for (const k of SIDE_KEYS) if (!(opts[k] ?? []).some(([v]) => v === p[k])) p[k] = opts[k]?.[0][0] ?? 'fixed';
   if (!t.mixed) p.right = p.left;
   p.damp = !!p.damp && !!t.damp;
   return p;
@@ -41,7 +45,7 @@ function normalizeProblem(p) {
 const endOptions = t => Array.isArray(t.ends) ? { left: t.ends, right: t.ends } : t.ends ?? {};
 /** 주제가 풀 수 있는 모든 문제입니다(공통 검사가 씁니다). */
 function problemsOf(t) {
-  let list = [{ eq: t.eq, domain: t.domain, left: 'fixed', right: 'fixed', damp: false }];
+  let list = [{ eq: t.eq, domain: t.domain, left: 'fixed', right: 'fixed', bottom: 'fixed', damp: false }];
   for (const [side, opts] of Object.entries(endOptions(t))) list = list.flatMap(p => opts.map(([v]) => ({ ...p, [side]: v })));
   if (t.damp) list = list.flatMap(p => [p, { ...p, damp: true }]);
   const seen = new Set();
