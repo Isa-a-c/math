@@ -12,15 +12,15 @@ $$\text{사인:}\quad b_n = \frac{2}{L}\int_{0}^{L} f(x)\sin\frac{n\pi x}{L}\,dx
   summary: cfg => [['반구간 전개', `(0, L)의 함수를 ${cfg.halfMode === 'cosine' ? '우함수로 확장해 코사인' : '기함수로 확장해 사인'} 항만 남겼습니다.${needsHalf(cfg) ? ' 현·막대의 해가 이 전개를 씁니다.' : ''}`]],
 });
 defineTopic({
-  id: 'halfRange', eq: 'none', domain: 'interval', look: p => p.left === p.right, mixed: true,
-  ends: { left: [['fixed', '값 0'], ['free', '기울기 0']], right: [['fixed', '값 0'], ['free', '기울기 0'], ['robin', 'f′ + hf = 0']] },
-  fields: p => p.right === 'robin' ? [{ k: 'hRobin', type: 'text', label: '경계 계수 h', hint: 'x = L에서 f′ + hf = 0' }] : [],
-  name: p => p.left === p.right ? ['11장', `반구간 전개 (${p.left === 'fixed' ? '사인' : '코사인'} 급수)`] : [null, `고유함수 전개 (${familyFor(p.left, p.right).plain})`],
-  uses: p => p.left === p.right ? ['series', 'half'] : ['modes'],
+  id: 'halfRange', eq: 'none', domain: 'interval', look: p => plainEnds(p), mixed: true,
+  ends: { left: [['fixed', '값 0'], ['free', '기울기 0'], ['robin', 'f′ − hf = 0']], right: [['fixed', '값 0'], ['free', '기울기 0'], ['robin', 'f′ + hf = 0']] },
+  fields: p => p.left === 'robin' || p.right === 'robin' ? [{ k: 'hRobin', type: 'text', label: '경계 계수 h', hint: 'x = 0에서 f′ − hf = 0, x = L에서 f′ + hf = 0' }] : [],
+  name: p => plainEnds(p) ? ['11장', `반구간 전개 (${p.left === 'fixed' ? '사인' : '코사인'} 급수)`] : [null, `고유함수 전개 (${familyFor(p.left, p.right).plain})`],
+  uses: p => plainEnds(p) ? ['series', 'half'] : ['modes'],
   params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id }),
   stages: cfg => {
     const p = cfg.prob, fam = familyOf(cfg), fixed = p.left === 'fixed';
-    if (p.left !== p.right) return [
+    if (!plainEnds(p)) return [
       { id: 'basis', title: '고유함수 (양 끝 조건이 정함)', panel: 'eigen', md: String.raw`${fam.title}인 $${fam.tex}$로 전개합니다. 양 끝 조건이 다르면 반구간 사인·코사인이 아니라 이런 고유함수가 나옵니다.` },
       { id: 'expand', title: '고유함수 전개', panel: 'modes', md: String.raw`$f(x) = \sum_{n=1}^{\infty} c_{n}${fam.tex}$, $${coefTexOf(fam)}$` },
     ];

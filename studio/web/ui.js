@@ -299,7 +299,7 @@ function exampleTabHtml() {
   const figs = figuresHtml();
   return exampleBody(d, kinds, items, figs);
 }
-const SETUP_KEYS = ['f', 'L', 'N', 'params', 'prob', 'look', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M', 'hRobin'];
+const SETUP_KEYS = ['f', 'L', 'N', 'params', 'prob', 'look', 'kDamp', 'on', 'halfMode', 'coefKind', 'coefN', 'waveDomain', 'waveEnds', 'damping', 'g', 'c', 'heatDomain', 'alpha', 'bc', 'left', 'right', 'X', 'jumpIndex', 'wMax', 'b', 'h', 'M', 'hRobin', 'mAng'];
 /** 그림을 담은 뒤 함수나 개념 설정이 바뀌었는지 봅니다(시간, 확대는 그림마다 다를 수 있어 보지 않습니다). */
 const sameSetup = (a, b) => SETUP_KEYS.every(k => JSON.stringify(a?.[k]) === JSON.stringify(b?.[k]));
 /** 문장을 직접 고쳤는데 자동 풀이가 켜져 있으면, 풀이가 설정의 함수 기준이라는 것을 알립니다. */

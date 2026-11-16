@@ -14,3 +14,5 @@ function defineConcept(mod) {
 }
 /** 주제(풀 수 있는 문제)를 등록합니다. */
 function defineTopic(topic) { TOPICS.push(topic); }
+/** 양 끝 조건이 같고 열 방출이 아니면 반구간 사인·코사인 전개(교재의 급수)로 봅니다. */
+const plainEnds = p => p.left === p.right && p.left !== 'robin';

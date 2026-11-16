@@ -7,7 +7,7 @@ const $ = id => document.getElementById(id);
 const $$ = sel => [...document.querySelectorAll(sel)];
 const DEFAULTS = {
   f: 'sign(x)', L: 'pi', N: 9, params: {},
-  prob: { eq: 'none', domain: 'periodic', left: 'fixed', right: 'fixed', bottom: 'fixed', damp: false },   // 문제(problem.js). on 등은 여기서 만들어집니다.
+  prob: { eq: 'none', domain: 'periodic', left: 'fixed', right: 'fixed', bottom: 'fixed', top: 'fixed', damp: false },   // 문제(problem.js). on 등은 여기서 만들어집니다.
   look: 'partial', stage: null,   // 전개 단계에서 볼 그래프, 그래프로 보는 풀이 단계(null이면 마지막 단계)
   on: Object.fromEntries(CONCEPTS.map(c => [c.id, c.id === 'series'])),   // 쓰는 개념 모듈(주제가 정함)
   fMode: 'single', pieces: [],   // 구간별 입력이면 pieces로 f를 만듭니다.
@@ -17,7 +17,8 @@ const DEFAULTS = {
   X: '8', s: 0,
   jumpIndex: 1, waveEnds: 'fixed', damping: '0', kDamp: '0.3',   // 도약점 선택, 현의 끝(고정/자유), 감쇠 k(문제에 감쇠가 있을 때 kDamp)
   wMax: '10',                                             // Fourier 적분의 위끝 a
-  hRobin: '1',                                             // 열 방출(Robin) 끝: u_x + hu = 0
+  hRobin: '1',                                             // 열 방출(Robin) 끝: x = 0에서 u_x − hu = 0, x = L에서 u_x + hu = 0
+  mAng: 0, angular: false,                                 // 원판의 각 방향 차수 m(처음 모양 f(r)cos mθ). angular는 주제가 정합니다.
   b: '1', h: 'y<b/2 ? y : b-y', M: 8,                     // 막: 세로 길이 b, 처음 모양의 y 방향 h(y), 모드 수
   xMin: '', xMax: '', yMin: '', yMax: '', tEndWave: '', tEndHeat: '',      // 비우면 자동
 };
@@ -107,15 +108,18 @@ function stringModel(f, g, L, N, speed, k, free) {
     amp: (n, t) => q[n](t), mode: (n, x, t) => q[n](t) * (n ? shape(n, x) : 1),
     u: (x, t) => { let s = q[0](t); for (let n = 1; n <= N; n++) s += q[n](t) * shape(n, x); return s; } };
 }
-/** 직사각형 막(가로 a = L, 세로 b): 처음 모양 f(x)h(y), 처음 속도 0, 가장자리 고정. */
-function membraneModel(f, h, a, b, M, speed) {
-  const Bx = halfCoefficients(f, a, M, false).c, By = halfCoefficients(h, b, M, false).c, lam = (m, n) => speed * PI * Math.hypot(m / a, n / b);
+/** 직사각형 막(가로 a = L, 세로 b): 처음 모양 f(x)h(y), 처음 속도 0. x 방향 고유함수 종류 fx, y 방향 fy(변의 조건이 정함, eigen.js).
+    모드 φₘ(x)ψₙ(y)의 각진동수는 λₘₙ = c√(kₘ² + k̃ₙ²)이고 계수는 Bₘₙ = (f의 계수)(h의 계수)입니다. */
+function membraneModel(fx, fy, f, h, a, b, M, speed) {
+  const Bx = eigenCoefficients(fx, f, a, M), By = eigenCoefficients(fy, h, b, M), lam = (m, n) => speed * Math.hypot(fx.k(m, a), fy.k(n, b));
   const terms = [];
-  for (let m = 1; m <= M; m++) for (let n = 1; n <= M; n++) { const B = Bx[m] * By[n]; if (Math.abs(B) > 1e-12) terms.push([m, n, B, lam(m, n)]); }
-  const u = (x, y, t) => { let s = 0; for (const [m, n, B, l] of terms) s += B * Math.cos(l * t) * Math.sin(m * PI * x / a) * Math.sin(n * PI * y / b); return s; };
+  for (let m = fx.n0; m <= M; m++) for (let n = fy.n0; n <= M; n++) { const B = Bx[m] * By[n]; if (Math.abs(B) > 1e-12) terms.push([m, n, B, lam(m, n)]); }
+  const u = (x, y, t) => { let s = 0; for (const [m, n, B, l] of terms) s += B * Math.cos(l * t) * fx.phi(m, x, a) * fy.phi(n, y, b); return s; };
   let zmax = 1e-9;
-  for (let i = 1; i < 20; i++) for (let j = 1; j < 20; j++) zmax = Math.max(zmax, Math.abs(u(i / 20 * a, j / 20 * b, 0)));
-  return { a, b, M, Bx, By, terms, lam, u, zmax, base: lam(1, 1) };
+  for (let i = 0; i <= 20; i++) for (let j = 0; j <= 20; j++) zmax = Math.max(zmax, Math.abs(u(i / 20 * a, j / 20 * b, 0)));
+  let base = Infinity, baseMode = [1, 1];   // 0이 아닌 가장 낮은 각진동수
+  for (let m = fx.n0; m <= fx.n0 + 2; m++) for (let n = fy.n0; n <= fy.n0 + 2; n++) { const l = lam(m, n); if (l > 1e-12 && l < base) { base = l; baseMode = [m, n]; } }
+  return { a, b, M, fx, fy, Bx, By, terms, lam, u, zmax, base, baseMode };
 }
 /** Fourier 적분: A(w), B(w)를 [−X, X]에서 수치 적분하고, 위끝 a까지의 적분으로 f를 다시 만듭니다. */
 /** 구간 [a, b]에서 유계인지 봅니다(촘촘히 볼수록 커지면 무한히 커지는 함수). */

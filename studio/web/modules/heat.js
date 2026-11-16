@@ -74,8 +74,9 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
         const fam = familyOf(cfg), h = prettyExpr(cfg.hRobin), U = i => prettyExpr(i ? cfg.right : cfg.left), goal = fam.n0 === 0 ? '도달하는 온도' : '정상 상태';
         if (fam.radial) return `반지름 $R = ${Ls}$, $c^2 = ${a}$인 원판의 가장자리가 ${fam.ends[1] === 'fixed' ? `온도 $U = ${U(1)}$로 유지된다` : '단열되어 있다'}. 초기 온도가 중심으로부터의 거리 $r$에만 따르는 $f(r)$일 때 $u(r,t)$와 ${goal}를 구하시오.`;
         const say = (e, i, end) => ({ fixed: [`온도를 $U_${i + 1} = ${U(i)}$로 유지하고`, `온도를 $U_${i + 1} = ${U(i)}$로 유지한다`], free: ['단열되어 있고', '단열되어 있다'],
-          robin: [`주위(온도 0)로 열을 내보내고($u_x + hu = 0$, $h = ${h}$)`, `주위(온도 0)로 열을 내보낸다($u_x + hu = 0$, $h = ${h}$)`] })[e][end ? 1 : 0];
-        const [l, r] = fam.ends, cond = l === r ? (l === 'fixed' ? `양 끝 온도를 $U_1 = ${U(0)}$, $U_2 = ${U(1)}$로 유지한다` : '양 끝이 단열되어 있다') : `$x = 0$ 끝은 ${say(l, 0)} $x = L$ 끝은 ${say(r, 1, true)}`;
+          robin: [`주위(온도 0)로 열을 내보내고($u_x ${i ? '+' : '-'} hu = 0$, $h = ${h}$)`, `주위(온도 0)로 열을 내보낸다($u_x ${i ? '+' : '-'} hu = 0$, $h = ${h}$)`] })[e][end ? 1 : 0];
+        const [l, r] = fam.ends, cond = l === r ? (l === 'fixed' ? `양 끝 온도를 $U_1 = ${U(0)}$, $U_2 = ${U(1)}$로 유지한다` : l === 'free' ? '양 끝이 단열되어 있다'
+          : `양 끝에서 주위(온도 0)로 열을 내보낸다($x = 0$에서 $u_x - hu = 0$, $x = L$에서 $u_x + hu = 0$, $h = ${h}$)`) : `$x = 0$ 끝은 ${say(l, 0)} $x = L$ 끝은 ${say(r, 1, true)}`;
         return `길이 $L = ${Ls}$, $c^2 = ${a}$인 막대의 ${cond}. 초기 온도가 $f(x)$일 때 $u(x,t)$와 ${goal}를 구하시오.`;
       },
       solution(cfg, R, { tol }) {
@@ -91,14 +92,14 @@ $$u(x,t) = \frac{1}{2c\sqrt{\pi t}}\int_{-\infty}^{\infty} f(v)\exp\left(-\frac{
       } },
   },
 });
-const ROD_ENDS = [['fixed', '온도 고정'], ['free', '단열']];
+const ROD_ENDS = [['fixed', '온도 고정'], ['free', '단열'], ['robin', '열 방출']];
 defineTopic({
-  id: 'rod', eq: 'heat', domain: 'interval', look: p => p.left === p.right, mixed: true,
-  ends: { left: ROD_ENDS, right: [...ROD_ENDS, ['robin', '열 방출']] },
-  name: p => p.right === 'robin' ? [null, '막대의 열전도 (끝에서 열 방출)'] : p.left !== p.right ? [null, '막대의 열전도 (한쪽 끝 단열)'] : ['12장', p.left === 'fixed' ? '막대의 열전도' : '양 끝이 단열된 막대의 열전도'],
-  uses: p => p.left === p.right ? ['series', 'half', 'heat'] : ['modes', 'heat'],
-  params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id, heatDomain: 'finite', bc: p.left !== p.right ? 'mixed' : p.left === 'free' ? 'insulated' : 'fixed' }),
-  fields: p => [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }] : []), ...(p.right === 'fixed' ? [{ k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : []), ...(p.right === 'robin' ? [{ k: 'hRobin', type: 'text', label: '열 방출 계수 h', hint: 'x = L 끝에서 u_x + hu = 0 (주위 온도 0)' }] : [])],
+  id: 'rod', eq: 'heat', domain: 'interval', look: plainEnds, mixed: true,
+  ends: { left: ROD_ENDS, right: ROD_ENDS },
+  name: p => p.left === 'robin' || p.right === 'robin' ? [null, '막대의 열전도 (끝에서 열 방출)'] : p.left !== p.right ? [null, '막대의 열전도 (한쪽 끝 단열)'] : ['12장', p.left === 'fixed' ? '막대의 열전도' : '양 끝이 단열된 막대의 열전도'],
+  uses: p => plainEnds(p) ? ['series', 'half', 'heat'] : ['modes', 'heat'],
+  params: p => ({ halfMode: p.left === 'fixed' ? 'sine' : 'cosine', family: familyFor(p.left, p.right).id, heatDomain: 'finite', bc: !plainEnds(p) ? 'mixed' : p.left === 'free' ? 'insulated' : 'fixed' }),
+  fields: p => [{ k: 'alpha', type: 'text', label: '열확산계수 c²' }, ...(p.left === 'fixed' ? [{ k: 'left', type: 'text', label: '왼쪽 끝 온도 U₁' }] : []), ...(p.right === 'fixed' ? [{ k: 'right', type: 'text', label: '오른쪽 끝 온도 U₂' }] : []), ...(p.left === 'robin' || p.right === 'robin' ? [{ k: 'hRobin', type: 'text', label: '열 방출 계수 h', hint: 'x = 0 끝은 u_x − hu = 0, x = L 끝은 u_x + hu = 0 (주위 온도 0)' }] : [])],
   stages: cfg => eigenStages(cfg, true),
 });
 defineTopic({

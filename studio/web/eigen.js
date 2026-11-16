@@ -1,73 +1,125 @@
 'use strict';
-/* 고유함수 엔진. 고유값 문제(구간 (0, L)의 F'' + k²F = 0, 원판의 Bessel 방정식)의 해를 종류 표(FAMILIES) 한 줄씩으로 두고,
+/* 고유함수 엔진. 고유값 문제(구간 (0, L)의 F'' + k²F = 0, 원판의 Bessel 방정식, Legendre 방정식)의 해를 종류 표(FAMILIES) 한 줄씩으로 두고,
    계수 계산(전개)과 시간 변화(파동·감쇠·열)는 종류와 상관없이 같은 코드가 합니다.
    한 줄에 담는 것: 양 끝 조건(ends), 고유값 kₙ, 고유함수 φₙ, 그리고 필요하면 가중치 w(x), 노름 ∫wφₙ², 수치로 구한 고유값,
    값이 있는 종류(열 방출 계수 h처럼)는 make(cfg). 새 경계조건이나 새 고유함수는 이 표에 한 줄을 더합니다. */
 const qk = n => 2 * n - 1;
 const SUBS = '₀₁₂₃₄₅₆₇₈₉', subDigits = n => String(n).split('').map(d => SUBS[d]).join('');
 
-/* ── Bessel 함수 J₀, J₁(유리 근사, 오차 약 1e-8)과 근 ─────────── */
-function besselJ0(x) {
+/* ── Bessel 함수 Jₘ과 근 ─────────────────────────── */
+/** 큰 x의 Jₘ(x): Hankel 점근 전개 √(2/πx)(P cos χ − Q sin χ), χ = x − (m/2 + 1/4)π. 항이 1e-17보다 작아지거나 커지기 시작하면 멈춥니다. */
+function besselAsym(m, x) {
+  const mu = 4 * m * m, z = 8 * x;
+  let P = 0, Q = 0, term = 1, prev = Infinity;
+  for (let k = 0; k < 80; k++) {
+    const a = Math.abs(term);
+    if (a > prev) break;
+    if (k % 2 === 0) P += (k / 2) % 2 ? -term : term; else Q += ((k - 1) / 2) % 2 ? -term : term;
+    if (a < 1e-17) break;
+    prev = a; term *= (mu - (2 * k + 1) ** 2) / ((k + 1) * z);
+  }
+  const chi = x - (m / 2 + .25) * PI;
+  return Math.sqrt(2 / (PI * x)) * (P * Math.cos(chi) - Q * Math.sin(chi));
+}
+/** Jₘ(x) (정수 m). x가 작으면 역방향 점화식 J_{k−1} = (2k/x)J_k − J_{k+1}과 1 = J₀ + 2(J₂ + J₄ + …)(Miller 방법), 크면 점근 전개. 오차 약 1e-15입니다. */
+function besselJ(m, x) {
+  if (m < 0) return (m % 2 ? -1 : 1) * besselJ(-m, x);
   const ax = Math.abs(x);
-  if (ax < 8) {
-    const y = x * x;
-    return (57568490574.0 + y * (-13362590354.0 + y * (651619640.7 + y * (-11214424.18 + y * (77392.33017 + y * -184.9052456)))))
-      / (57568490411.0 + y * (1029532985.0 + y * (9494680.718 + y * (59272.64853 + y * (267.8532712 + y)))));
+  if (ax < 1e-8) { let t = 1; for (let k = 1; k <= m; k++) t *= ax / 2 / k; return x < 0 && m % 2 ? -t : t; }
+  if (ax >= 25 + m * m) { const v = besselAsym(m, ax); return x < 0 && m % 2 ? -v : v; }
+  const top = Math.max(m, ax), M = 2 * Math.ceil((top + Math.sqrt(160 * top) + 12) / 2);
+  let jp = 0, j = 1e-30, sum = 0, res = 0;
+  for (let k = M; k > 0; k--) {
+    const jm = 2 * k / ax * j - jp;   // J_{k−1} (아직 비율만 맞음)
+    jp = j; j = jm;
+    if (Math.abs(j) > 1e200) { j *= 1e-200; jp *= 1e-200; sum *= 1e-200; res *= 1e-200; }
+    if (k - 1 === m) res = j;
+    if (k - 1 > 0 && (k - 1) % 2 === 0) sum += j;
   }
-  const z = 8 / ax, y = z * z, xx = ax - .785398164;
-  const p = 1 + y * (-.1098628627e-2 + y * (.2734510407e-4 + y * (-.2073370639e-5 + y * .2093887211e-6)));
-  const q = -.1562499995e-1 + y * (.1430488765e-3 + y * (-.6911147651e-5 + y * (.7621095161e-6 - y * .934935152e-7)));
-  return Math.sqrt(.636619772 / ax) * (Math.cos(xx) * p - z * Math.sin(xx) * q);
+  const v = res / (j + 2 * sum);
+  return x < 0 && m % 2 ? -v : v;
 }
-function besselJ1(x) {
-  const ax = Math.abs(x);
-  if (ax < 8) {
-    const y = x * x;
-    return x * (72362614232.0 + y * (-7895059235.0 + y * (242396853.1 + y * (-2972611.439 + y * (15704.48260 + y * -30.16036606)))))
-      / (144725228442.0 + y * (2300535178.0 + y * (18583304.74 + y * (99447.43394 + y * (376.9991397 + y)))));
-  }
-  const z = 8 / ax, y = z * z, xx = ax - 2.356194491;
-  const p = 1 + y * (.183105e-2 + y * (-.3516396496e-4 + y * (.2457520174e-5 + y * -.240337019e-6)));
-  const q = .04687499995 + y * (-.2002690873e-3 + y * (.8449199096e-5 + y * (-.88228987e-6 + y * .105787412e-6)));
-  return Math.sqrt(.636619772 / ax) * (Math.cos(xx) * p - z * Math.sin(xx) * q) * Math.sign(x);
-}
-const BESSEL_ZEROS = { 0: [], 1: [] };
-/** Jₒ(x) = 0의 n번째 양의 근(o = 0, 1). McMahon 근삿값에서 Newton 법으로 구하고 저장해 둡니다. */
-function besselZero(order, n) {
-  const z = BESSEL_ZEROS[order];
-  while (z.length < n) {
-    let x = (z.length + 1 + (order ? .25 : -.25)) * PI;
-    for (let i = 0; i < 60; i++) { const f = order ? besselJ1(x) : besselJ0(x), d = order ? besselJ0(x) - besselJ1(x) / x : -besselJ1(x), dx = f / d; x -= dx; if (Math.abs(dx) < 1e-15 * x) break; }
-    z.push(x);
-  }
-  return z[n - 1];
-}
-
-/* ── 열 방출(Robin) 끝: kₙ은 방정식의 근 ─────────────── */
-const ROBIN_ROOTS = new Map();
-/** x = L 끝이 u_x + hu = 0일 때의 kₙ. sin이면 tan kL = −k/h, cos면 k tan kL = h의 n번째 양의 근(이분법). */
-function robinRoot(kind, L, h, n) {
-  const key = `${kind}|${L}|${h}`, list = ROBIN_ROOTS.get(key) ?? [];
-  ROBIN_ROOTS.set(key, list);
+const besselJ0 = x => besselJ(0, x), besselJ1 = x => besselJ(1, x);
+/** Jₘ′(x) = (J_{m−1} − J_{m+1})/2 */
+const besselJd = (m, x) => (besselJ(m - 1, x) - besselJ(m + 1, x)) / 2;
+const BESSEL_ROOTS = new Map();
+/** Jₘ(x) = 0(d = 0) 또는 Jₘ′(x) = 0(d = 1)의 n번째 양의 근. x = m(첫 근보다 앞)부터 0.1씩 부호가 바뀌는 곳을 찾고 이분법으로 좁힙니다. */
+function besselRoot(m, n, d = 0) {
+  const key = `${m}|${d}`, list = BESSEL_ROOTS.get(key) ?? [], g = d ? x => besselJd(m, x) : x => besselJ(m, x);
+  BESSEL_ROOTS.set(key, list);
   while (list.length < n) {
-    const m = list.length + 1, g = kind === 'sin' ? k => k * Math.cos(k * L) + h * Math.sin(k * L) : k => h * Math.cos(k * L) - k * Math.sin(k * L);
-    let lo = (kind === 'sin' ? m - .5 : m - 1) * PI / L, hi = (kind === 'sin' ? m : m - .5) * PI / L;
+    let lo = list.length ? list.at(-1) + 1e-6 : Math.max(m, .1), hi = lo + .1;
     const sLo = Math.sign(g(lo));
-    for (let i = 0; i < 100; i++) { const mid = (lo + hi) / 2; if (Math.sign(g(mid)) === sLo) lo = mid; else hi = mid; }
+    while (Math.sign(g(hi)) === sLo) { lo = hi; hi += .1; }
+    for (let i = 0; i < 200 && hi - lo > 4e-16 * hi; i++) { const mid = (lo + hi) / 2; if (Math.sign(g(mid)) === sLo) lo = mid; else hi = mid; }
     list.push((lo + hi) / 2);
   }
   return list[n - 1];
 }
+/** Jₒ(x) = 0의 n번째 양의 근(예전 이름). */
+const besselZero = (order, n) => besselRoot(order, n, 0);
+/** 원판의 각 방향 차수 m(처음 모양 f(r)cos mθ). 주제가 각 방향을 허락할 때(cfg.angular)만 씁니다. */
+const besselOrder = cfg => cfg?.angular ? Math.max(0, Math.min(5, Math.round(Number(cfg.mAng) || 0))) : 0;
+/** 원판의 고유함수 Jₘ(kr): 가장자리 r = R에서 값 0(rim 'fixed') 또는 기울기 0('free'). 가중치 r로 직교합니다. */
+function besselFamily(rim, m = 0) {
+  const fixed = rim === 'fixed', id = fixed ? 'bessel' : 'besselFree', z = n => besselRoot(m, n, fixed ? 0 : 1);
+  const n0 = !fixed && m === 0 ? 0 : 1, a = fixed ? '\\alpha' : '\\beta', ap = fixed ? 'α' : 'β', Jm = `J_{${m}}`, k = (n, L) => n ? z(n) / L : 0;
+  const rootEq = fixed ? `${Jm}(${a}) = 0` : m ? `${Jm}'(${a}) = 0` : String.raw`J_0'(\beta) = -J_1(\beta) = 0`;
+  return { id, ends: ['center', rim], n0, radial: true, m, key: `${id}:${m}`, make: cfg => besselFamily(rim, besselOrder(cfg)),
+    k, phi: (n, x, L) => n ? besselJ(m, z(n) * x / L) : 1, w: x => x,
+    norm: (n, L) => n ? L * L / 2 * (fixed ? besselJ(m + 1, z(n)) ** 2 : (1 - m * m / z(n) ** 2) * besselJ(m, z(n)) ** 2) : L * L / 2,
+    ode: m ? String.raw`F'' + \frac{1}{r}F' + \left(k^2 - \frac{${m * m}}{r^2}\right)F = 0` : String.raw`F'' + \frac{1}{r}F' + k^2F = 0`,
+    tex: String.raw`${Jm}\left(\frac{${a}_n r}{R}\right)`, kTex: String.raw`\frac{${a}_n}{R}`, plain: `J${subDigits(m)}(${ap}ₙr/R)`,
+    title: `가장자리 r = R에서 ${fixed ? '값 0' : '기울기 0'}`,
+    kMd: () => `$k_n = ${a}_n/R$, $${a}_n$은 $${rootEq}$의 ${n0 ? '양의 근' : '근'}(${[...(n0 ? [] : ['$\\beta_0 = 0$']), ...[1, 2, 3].map(n => `$${a}_${n} \\approx ${fmt(z(n), 4)}$`)].join(', ')})입니다.`,
+    coefTex: (c, f) => {
+      const J = String.raw`${Jm}\left(\frac{${a}_n r}{R}\right)`, I = String.raw`\int_0^R r\,${f}${J}\,dr`;
+      if (fixed) return String.raw`${c}_n = \frac{2}{R^2J_{${m + 1}}(\alpha_n)^2}${I}`;
+      if (m) return String.raw`${c}_n = \frac{2\beta_n^2}{R^2(\beta_n^2 - ${m * m})${Jm}(\beta_n)^2}${I}`;
+      return String.raw`${c}_n = \frac{2}{R^2J_0(\beta_n)^2}${I},\quad ${c}_0 = \frac{2}{R^2}\int_0^R r\,${f}\,dr`;
+    },
+    label: n => n ? `J${subDigits(m)}(${ap}${subDigits(n)}<i>r</i>/<i>R</i>)` : '1' };
+}
+
+/* ── 열 방출(Robin) 끝: kₙ은 방정식의 근 ─────────────── */
 /** 열 방출 계수 h(cfg.hRobin). 계산 단계에서 positive로 따로 검사하므로 여기서는 틀리면 1로 둡니다. */
 const robinH = cfg => { try { const h = constant(cfg?.hRobin ?? '1', 1); return h > 0 ? h : 1; } catch { return 1; } };
-function robinFamily(kind, h = 1) {
-  const sin = kind === 'sin', k = (n, L) => robinRoot(kind, L, h, n), fn = sin ? Math.sin : Math.cos, name = sin ? 'sin' : 'cos';
-  return { id: sin ? 'rsine' : 'rcosine', ends: [sin ? 'fixed' : 'free', 'robin'], n0: 1, h, key: `${sin ? 'rsine' : 'rcosine'}:${h}`,
-    make: cfg => robinFamily(kind, robinH(cfg)), k, phi: (n, x, L) => fn(k(n, L) * x),
-    norm: (n, L) => { const q = k(n, L); return L / 2 + (sin ? -1 : 1) * Math.sin(2 * q * L) / (4 * q); },
-    tex: `\\${name} k_{n}x`, kTex: 'k_n', plain: `${name}(kₙx)`, title: `x = 0에서 ${sin ? '값 0' : '기울기 0'}, x = L에서 u′ + hu = 0`,
-    kMd: L => `$k_n$은 $${sin ? String.raw`\tan kL = -k/h` : String.raw`k\tan kL = h`}$의 양의 근입니다${isFinite(L) ? `($h = ${fmt(h, 3)}$: ${[1, 2, 3].map(n => `$k_${n} \\approx ${fmt(k(n, L), 4)}$`).join(', ')})` : ''}.`,
-    label: n => `${name}(<i>k</i>${subDigits(n)}<i>x</i>)` };
+/** x = 0 끝 조건을 만족하는 해 ψ = A(kx)와 그 도함수 [ψ, ψ′] (k → 0에서도 나누지 않는 꼴). 열 방출은 x = 0에서 ψ′ = hψ입니다. */
+const robinBasis = (left, h, k, x) => left === 'fixed' ? [Math.sin(k * x), k * Math.cos(k * x)] : left === 'free' ? [Math.cos(k * x), -k * Math.sin(k * x)]
+  : [k * Math.cos(k * x) + h * Math.sin(k * x), -k * k * Math.sin(k * x) + h * k * Math.cos(k * x)];
+const ROBIN_ROOTS = new Map();
+/** 한쪽 이상이 열 방출인 끝 조건의 n번째 고유값 kₙ. ((n−1)π/L, nπ/L)에 근이 하나씩 있으므로 이분법으로 구합니다. */
+function robinRoot(left, right, h, L, n) {
+  const key = `${left}|${right}|${h}|${L}`, list = ROBIN_ROOTS.get(key) ?? [];
+  ROBIN_ROOTS.set(key, list);
+  const g = k => { const [v, d] = robinBasis(left, h, k, L); return right === 'fixed' ? v : right === 'free' ? d : d + h * v; };
+  while (list.length < n) {
+    const m = list.length + 1;
+    let lo = ((m - 1) + 1e-9) * PI / L, hi = m * PI / L;
+    const sLo = Math.sign(g(lo));
+    for (let i = 0; i < 200 && hi - lo > 4e-16 * hi; i++) { const mid = (lo + hi) / 2; if (Math.sign(g(mid)) === sLo) lo = mid; else hi = mid; }
+    list.push((lo + hi) / 2);
+  }
+  return list[n - 1];
+}
+const ROBIN_END = { fixed: ['값 0', '값 0'], free: ['기울기 0', '기울기 0'], robin: ['u′ − hu = 0', 'u′ + hu = 0'] };
+/** 한쪽 이상이 열 방출(x = 0에서 u_x − hu = 0, x = L에서 u_x + hu = 0, 주위 온도 0)인 고유함수 종류입니다. */
+function robinFamily(left, right, h = 1) {
+  const id = left === 'fixed' && right === 'robin' ? 'rsine' : left === 'free' && right === 'robin' ? 'rcosine' : `robin-${left}-${right}`;
+  const k = (n, L) => robinRoot(left, right, h, L, n);
+  const phi = left === 'fixed' ? (n, x, L) => Math.sin(k(n, L) * x) : left === 'free' ? (n, x, L) => Math.cos(k(n, L) * x)
+    : (n, x, L) => { const q = k(n, L); return Math.cos(q * x) + h / q * Math.sin(q * x); };
+  const eq = left === 'robin' && right === 'robin' ? String.raw`\tan kL = \frac{2hk}{k^2 - h^2}` : [left, right].includes('fixed') ? String.raw`\tan kL = -k/h` : String.raw`k\tan kL = h`;
+  const tex = { fixed: String.raw`\sin k_{n}x`, free: String.raw`\cos k_{n}x`, robin: String.raw`\left(\cos k_{n}x + \frac{h}{k_n}\sin k_{n}x\right)` }[left];
+  const plain = { fixed: 'sin(kₙx)', free: 'cos(kₙx)', robin: 'cos kₙx + (h/kₙ)sin kₙx' }[left];
+  return { id, ends: [left, right], n0: 1, h, key: `${id}:${h}`, make: cfg => robinFamily(left, right, robinH(cfg)), k, phi,
+    norm: (n, L) => {   // ∫₀ᴸ φ² dx (닫힌 꼴)
+      const q = k(n, L), c2 = L / 2 + Math.sin(2 * q * L) / (4 * q), s2 = L - c2;
+      return left === 'fixed' ? s2 : left === 'free' ? c2 : c2 + 2 * h / q * Math.sin(q * L) ** 2 / (2 * q) + (h / q) ** 2 * s2;
+    },
+    tex, kTex: 'k_n', plain, title: `x = 0에서 ${ROBIN_END[left][0]}, x = L에서 ${ROBIN_END[right][1]}`,
+    kMd: L => `$k_n$은 $${eq}$의 양의 근입니다${isFinite(L) ? `($h = ${fmt(h, 3)}$: ${[1, 2, 3].map(n => `$k_${n} \\approx ${fmt(k(n, L), 4)}$`).join(', ')})` : ''}.`,
+    label: n => { const kn = `<i>k</i>${subDigits(n)}<i>x</i>`; return left === 'fixed' ? `sin(${kn})` : left === 'free' ? `cos(${kn})` : `cos(${kn}) + (<i>h</i>/<i>k</i>${subDigits(n)})sin(${kn})`; } };
 }
 const FAMILIES = [
   { id: 'sine', ends: ['fixed', 'fixed'], n0: 1, harmonic: true, k: (n, L) => n * PI / L, phi: (n, x, L) => Math.sin(n * PI * x / L),
@@ -82,21 +134,14 @@ const FAMILIES = [
   { id: 'qcosine', ends: ['free', 'fixed'], n0: 1, harmonic: true, k: (n, L) => qk(n) * PI / (2 * L), phi: (n, x, L) => Math.cos(qk(n) * PI * x / (2 * L)),
     tex: String.raw`\cos\frac{(2n-1)\pi x}{2L}`, kTex: String.raw`\frac{(2n-1)\pi}{2L}`, plain: 'cos((2n−1)πx/2L)', title: 'x = 0에서 기울기 0, x = L에서 값 0',
     label: n => `cos(${qk(n) > 1 ? qk(n) : ''}π<i>x</i>/2<i>L</i>)` },
-  robinFamily('sin'),
-  robinFamily('cos'),
-  // 원판(반지름 방향, 가중치 r). x 자리가 반지름 r, L이 반지름 R입니다.
-  { id: 'bessel', ends: ['center', 'fixed'], n0: 1, radial: true, k: (n, L) => besselZero(0, n) / L, phi: (n, x, L) => besselJ0(besselZero(0, n) * x / L),
-    w: x => x, norm: (n, L) => L * L * besselJ1(besselZero(0, n)) ** 2 / 2, ode: String.raw`F'' + \frac{1}{r}F' + k^2F = 0`,
-    tex: String.raw`J_0\left(\frac{\alpha_n r}{R}\right)`, kTex: String.raw`\frac{\alpha_n}{R}`, plain: 'J₀(αₙr/R)', title: '가장자리 r = R에서 값 0',
-    kMd: () => String.raw`$k_n = \alpha_n/R$, $\alpha_n$은 $J_0(\alpha) = 0$의 양의 근($\alpha_1 \approx 2.405$, $\alpha_2 \approx 5.520$, $\alpha_3 \approx 8.654$)입니다.`,
-    coefTex: (c, f) => String.raw`${c}_n = \frac{2}{R^2J_1(\alpha_n)^2}\int_0^R r\,${f}J_0\left(\frac{\alpha_n r}{R}\right)dr`,
-    label: n => `J₀(α${subDigits(n)}<i>r</i>/<i>R</i>)` },
-  { id: 'besselFree', ends: ['center', 'free'], n0: 0, radial: true, k: (n, L) => n ? besselZero(1, n) / L : 0, phi: (n, x, L) => n ? besselJ0(besselZero(1, n) * x / L) : 1,
-    w: x => x, norm: (n, L) => L * L * (n ? besselJ0(besselZero(1, n)) ** 2 : 1) / 2, ode: String.raw`F'' + \frac{1}{r}F' + k^2F = 0`,
-    tex: String.raw`J_0\left(\frac{\beta_n r}{R}\right)`, kTex: String.raw`\frac{\beta_n}{R}`, plain: 'J₀(βₙr/R)', title: '가장자리 r = R에서 기울기 0',
-    kMd: () => String.raw`$k_n = \beta_n/R$, $\beta_n$은 $J_0'(\beta) = -J_1(\beta) = 0$의 근($\beta_0 = 0$, $\beta_1 \approx 3.832$, $\beta_2 \approx 7.016$)입니다.`,
-    coefTex: (c, f) => String.raw`${c}_n = \frac{2}{R^2J_0(\beta_n)^2}\int_0^R r\,${f}J_0\left(\frac{\beta_n r}{R}\right)dr,\quad ${c}_0 = \frac{2}{R^2}\int_0^R r\,${f}\,dr`,
-    label: n => n ? `J₀(β${subDigits(n)}<i>r</i>/<i>R</i>)` : '1' },
+  robinFamily('fixed', 'robin'),
+  robinFamily('free', 'robin'),
+  robinFamily('robin', 'fixed'),
+  robinFamily('robin', 'free'),
+  robinFamily('robin', 'robin'),
+  // 원판(반지름 방향, 가중치 r). x 자리가 반지름 r, L이 반지름 R입니다. 각 방향 차수 m은 make(cfg)가 넣습니다.
+  besselFamily('fixed'),
+  besselFamily('free'),
 ];
 /** 양 끝 조건에 맞는 고유함수 종류입니다(값을 넣지 않은 표의 줄). 원판은 ('center', 가장자리)입니다. */
 const familyFor = (left, right) => FAMILIES.find(f => f.ends[0] === left && f.ends[1] === right) ?? FAMILIES[0];
@@ -133,9 +178,9 @@ function modalWave(fam, f, g, L, N, speed, k) {
   return { family: fam, coef: B, velocity: V, mean: fam.n0 === 0 ? B[0] : 0, omega: om, damping: k, range: [0, L],
     amp: (n, t) => q[n](t), mode: (n, x, t) => q[n](t) * fam.phi(n, x, L), u };
 }
-/** 정상 상태 U(x) = A + Bx: 끝마다 고정(U = 끝 온도), 단열·중심(U′ = 0), 열 방출(U′ + hU = 0, 주위 온도 0). 양 끝 단열이면 [0, 0]입니다. */
+/** 정상 상태 U(x) = A + Bx: 끝마다 고정(U = 끝 온도), 단열·중심(U′ = 0), 열 방출(x = 0에서 U′ − hU = 0, x = L에서 U′ + hU = 0, 주위 온도 0). 양 끝 단열이면 [0, 0]입니다. */
 function steadyLine(fam, L, left, right) {
-  const [[a1, b1, c1], [a2, b2, c2]] = fam.ends.map((e, i) => { const x = i ? L : 0; return e === 'fixed' ? [1, x, i ? right : left] : e === 'robin' ? [fam.h, 1 + fam.h * x, 0] : [0, 1, 0]; });
+  const [[a1, b1, c1], [a2, b2, c2]] = fam.ends.map((e, i) => { const x = i ? L : 0; return e === 'fixed' ? [1, x, i ? right : left] : e === 'robin' ? [fam.h, (i ? 1 : -1) + fam.h * x, 0] : [0, 1, 0]; });
   const det = a1 * b2 - a2 * b1;
   return Math.abs(det) < 1e-12 ? [0, 0] : [(c1 * b2 - c2 * b1) / det, (a1 * c2 - a2 * c1) / det];
 }

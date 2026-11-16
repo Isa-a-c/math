@@ -77,6 +77,15 @@ window.STUDIO_SELFTEST = () => {
   prob('eq', 'heat'); ends('free'); set({ f: 'x' });
   check(near(S.R.heat.u(0, 1), PI / 2 - 4 / PI * Math.exp(-1) - 4 / (9 * PI) * Math.exp(-9), 1e-4) && near(S.R.heat.u(1, 60), PI / 2, 1e-6), '열 + 단열: 교재 해와 평균 π/2');
   prob('eq', 'wave'); prob('domain', 'rect'); check(shown() === 'membrane' && near(S.R.membrane.u(PI / 2, .5, 0), PI / 4, .1), '직사각형 막: t = 0에서 f(x)h(y)');
+  // 막의 네 변: 모두 자유면 x, y 방향 모두 코사인. f = cos(πx), h = cos(πy)이면 모드 (1, 1) 하나, λ₁₁ = π√2
+  check($$('#problem [data-prob="top"]').length === 2 && $$('#problem [data-prob="bottom"]').length === 2, '직사각형 막: 네 변마다 고정·자유');
+  for (const k of ['left', 'right', 'bottom', 'top']) prob(k, 'free');
+  set({ f: 'cos(pi*x/L)', h: 'cos(pi*y/b)', L: '1', b: '1', M: 6 });
+  check(recipe().includes('자유로운 변') && S.cfg.family === 'cosine' && near(S.R.membrane.u(0, 0, 1), Math.cos(PI * Math.SQRT2), 1e-6) && near(S.R.membrane.u(.3, .7, 0), Math.cos(.3 * PI) * Math.cos(.7 * PI), 1e-6) && painted()
+    && problemText('membrane', S.good, S.R).includes('모두 자유') && solutionText('membrane', S.good, S.R).includes('\\cos\\frac{m\\pi x}{a}'), '네 변이 자유로운 막: 모드 cos(πx)cos(πy), λ₁₁ = π√2');
+  prob('left', 'fixed'); prob('top', 'fixed'); set({ f: 'sin(pi*x/(2*L))', h: 'cos(pi*y/(2*b))' });
+  check(S.cfg.family === 'qsine' && shown() === 'membrane' && near(S.R.membrane.u(1, .5, 0), Math.cos(PI / 4), 1e-3) && near(S.R.membrane.base, Math.hypot(PI / 2, PI / 2), 1e-9) && S.cfg.on.modes, '한쪽 변씩 자유: 모드 sin(πx/2a)cos(πy/2b), λ = π/√2');
+  reset({ f: 'x<L/2 ? x : L-x', L: 'pi', N: 200, c: '1', alpha: '1', prob: { eq: 'wave', domain: 'interval' } });
   prob('domain', 'interval'); prob('damp', 'on'); set({ f: 'sin(x)', kDamp: '0.5' }); const mu2 = Math.sqrt(1 - .25);
   check(near(S.R.wave.u(PI / 2, 1), Math.exp(-.5) * (Math.cos(mu2) + .5 / mu2 * Math.sin(mu2)), 1e-6), '감쇠: e^(−kt) 감쇠 진동');
   // 주제 공통 검사: 등록된 모든 주제의 모든 문제(주제를 더하면 저절로 검사됩니다)
@@ -115,25 +124,35 @@ window.STUDIO_SELFTEST = () => {
   prob('bottom', 'free'); check(near(S.R.laplace.u(.5, 0), 1 / Math.cosh(PI), 1e-6) && recipe().includes('응용') && solutionText('laplace', S.good, S.R).includes('\\cosh'), '아래 변 단열: cosh(πy)/cosh(π)');
   prob('left', 'free'); prob('right', 'free'); set({ f: 'x' }); check(near(S.R.laplace.u(.4, 1), .4, 5e-3) && near(S.R.laplace.c[0], .5, 1e-6) && problemText('laplace', S.good, S.R).includes('단열'), '세 변 단열: 평균 온도 항 c₀ = 1/2');
   // 열 방출 끝(Robin): kₙ은 tan kL = −k/h의 근
-  { const k1 = robinRoot('sin', 1, 1, 1);
+  { const k1 = robinRoot('fixed', 'robin', 1, 1, 1);
     reset({ f: `sin(${k1}*x)`, L: '1', alpha: '1', left: '0', N: 20, prob: { eq: 'heat', domain: 'interval', left: 'fixed', right: 'robin' } });
     check(near(Math.tan(k1), -k1, 1e-9) && near(S.R.heat.u(.5, .1), Math.sin(k1 * .5) * Math.exp(-k1 * k1 * .1), 1e-5) && !!$('f_hRobin') && !$('f_right') && recipe().includes('열 방출') && shown() === 'heat', '막대 끝의 열 방출: kₙ은 tan kL = −k/h의 근, u = sin(k₁x)e^(−k₁²t)');
     set({ f: '1', left: '1' }); check(near(S.R.heat.limit(1), .5, 1e-9) && solutionText('heat', S.good, S.R).includes('\\tan kL') && problemText('heat', S.good, S.R).includes('열을 내보낸다'), '열 방출 끝의 정상 상태 U = U₁(1 − hx/(1 + hL))');
-    set({ hRobin: '-1' }); check(!$('err').hidden && $('err').textContent.includes('h'), '열 방출 계수가 0 이하면 알림'); set({ hRobin: '1' }); }
+    set({ hRobin: '-1' }); check(!$('err').hidden && $('err').textContent.includes('h'), '열 방출 계수가 0 이하면 알림'); set({ hRobin: '1' });
+    // 양 끝 열 방출: 정상 상태 0, kₙ은 tan kL = 2hk/(k² − h²)의 근. x = 0 끝만 열 방출이면 (fixed, robin)을 뒤집은 것
+    prob('left', 'robin'); prob('right', 'robin'); const kr = S.R.heat.family.k(1, 1);
+    check(near(Math.tan(kr), 2 * kr / (kr * kr - 1), 1e-9) && near(S.R.heat.limit(.3), 0, 1e-12) && shown() === 'heat' && problemText('heat', S.good, S.R).includes('u_x - hu') && S.cfg.on.modes && !S.cfg.on.half, '양 끝 열 방출: tan kL = 2hk/(k² − h²), 정상 상태 0');
+    prob('right', 'fixed'); set({ f: '1', right: '1' }); check(near(S.R.heat.family.k(1, 1), k1, 1e-12) && near(S.R.heat.limit(0), .5, 1e-9) && near(S.R.heat.limit(1), 1, 1e-9), 'x = 0 끝 열 방출, x = L 끝 1도: 정상 상태 U = (1 + hx)/(1 + hL)'); }
   // 원판: Fourier–Bessel 급수, 원형 막, 원판의 열전도. 입력은 r로 써도 됩니다.
   { const a1 = besselZero(0, 1);
-    check(near(a1, 2.404825557695773, 1e-7) && near(besselZero(1, 1), 3.831705970207512, 1e-7) && near(besselJ0(1), .7651976865579666, 1e-7), 'Bessel 함수와 근: α₁ = 2.4048, β₁ = 3.8317');
+    check(near(a1, 2.404825557695773, 1e-13) && near(besselZero(1, 1), 3.8317059702075125, 1e-13) && near(besselJ0(1), .7651976865579666, 1e-14) && near(besselJ1(1), .44005058574493355, 1e-14)
+      && near(besselJ(2, 5), .04656511627775222, 1e-14) && near(besselJ0(50), .05581232766925182, 1e-13) && near(besselRoot(2, 1), 5.135622301840683, 1e-12) && near(besselRoot(1, 1, 1), 1.8411837813406593, 1e-12),
+      'Bessel 함수 Jₘ과 근(오차 1e-13 이하): α₁ = 2.4048, J₁의 근 3.8317, J₂의 근 5.1356, J₁′의 근 1.8412');
     reset({ f: '1 - (r/R)^2', L: '1', N: 20, prob: { eq: 'none', domain: 'disk' } });
     check(recipe().includes('Fourier–Bessel') && shown() === 'modes' && painted() && near(S.R.f(.5), .75, 1e-12) && !$('p_r') && near(S.R.modes.c[1], 8 / (a1 ** 3 * besselJ1(a1)), 1e-5) && problemText('modes', S.good, S.R).includes('f(r)'), 'Fourier–Bessel 급수: 1 − r² 의 a₁ = 8/(α₁³J₁(α₁)), r로 입력');
     prob('eq', 'wave'); check(recipe().includes('원형 막') && shown() === 'bessel' && painted() && $('problem').textContent.includes('가장자리 r = R: 고정') && near(S.R.wave.u(0, 0), 1, 2e-3) && solutionText('wave', S.good, S.R).includes('정수배가 아니어서'), '원형 막: 위에서 본 모양과 단면, 주기적이지 않음');
     prob('eq', 'heat'); prob('right', 'free'); const tex0 = $('stageBox').innerHTML; check(!/A<sub>nJ/.test(tex0) && near(S.R.heat.mean, .5, 1e-6) && shown() === 'bessel' && recipe().includes('원판의 열전도'), '원판의 열전도(가장자리 단열): 평균 온도 2∫r f dr/R² = 1/2');
+    // 각 방향 차수 m: 처음 모양 f(r)cos mθ, 고유함수 Jₘ
+    prob('eq', 'wave'); set({ mAng: 2 }); check(recipe().includes('cos 2θ') && near(S.R.wave.family.k(1, 1), besselRoot(2, 1), 1e-12) && painted() && solutionText('wave', S.good, S.R).includes('\\cos 2\\theta') && problemText('wave', S.good, S.R).includes('\\cos 2\\theta'), '원형 막의 cos 2θ 모드: 고유함수 J₂(αₙr/R)');
+    prob('eq', 'heat'); check(S.R.heat.family.m === 0 && !recipe().includes('θ'), '원판의 열전도는 반지름 방향만(m을 쓰지 않음)');
+    prob('eq', 'wave'); set({ mAng: 0 }); prob('eq', 'heat');
     prob('domain', 'interval'); check(S.cfg.f === '1 - (x/L)^2' && $('status').textContent.includes('x, L로') && near(S.R.f(.5), .75, 1e-12), '원판에서 다른 영역으로 가면 식의 r, R을 x, L로 바꿈'); }
   // 고유함수 종류 공통 검사: 끝 조건과 직교성(FAMILIES에 줄을 더하면 저절로 검사됩니다)
   { const bad = [], L = 1.3, hD = 1e-6;
-    for (const fam of FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' }))) {
+    for (const fam of [...FAMILIES.map(f => familyOf({ family: f.id, hRobin: '1' })), ...['bessel', 'besselFree'].map(id => familyOf({ family: id, angular: true, mAng: 2 }))]) {
       const w = fam.w ?? (() => 1), d = (n, x) => (fam.phi(n, x + hD, L) - fam.phi(n, x - hD, L)) / (2 * hD);
       for (let m = fam.n0; m < fam.n0 + 4; m++) {
-        fam.ends.forEach((e, i) => { const x = i ? L : 0, v = fam.phi(m, x, L), dv = d(m, x), ok = { fixed: Math.abs(v) < 1e-9, free: Math.abs(dv) < 1e-5, center: Math.abs(dv) < 1e-5, robin: Math.abs(dv + (fam.h ?? 0) * v) < 1e-5 }[e]; if (!ok) bad.push(`${fam.id} n=${m}: ${e} 끝`); });
+        fam.ends.forEach((e, i) => { const x = i ? L : 0, v = fam.phi(m, x, L), dv = d(m, x), ok = { fixed: Math.abs(v) < 1e-9, free: Math.abs(dv) < 1e-5, center: fam.m ? Math.abs(v) < 1e-9 : Math.abs(dv) < 1e-5, robin: Math.abs(dv + (i ? 1 : -1) * (fam.h ?? 0) * v) < 1e-5 }[e]; if (!ok) bad.push(`${fam.key ?? fam.id} n=${m}: ${e} 끝`); });
         for (let k = fam.n0; k < fam.n0 + 4; k++) { const ip = integrate(x => w(x) * fam.phi(m, x, L) * fam.phi(k, x, L), 0, L); if (Math.abs(ip - (m === k ? normOf(fam, k, L) : 0)) > 1e-6 * L) bad.push(`${fam.id}: <φ${m}, φ${k}> = ${ip}`); }
       }
     }

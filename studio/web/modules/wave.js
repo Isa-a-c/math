@@ -64,7 +64,7 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
         const g = prettyExpr(cfg.g, cfg.params), cs = prettyExpr(cfg.c), extra = `${+cfg.damping > 0 ? ` 감쇠 계수는 $k = ${prettyExpr(cfg.damping)}$이다($u_{tt} + 2ku_t = c^2u_{xx}$).` : ''}`;
         if (cfg.waveDomain !== 'finite') return `무한히 긴 현($c = ${cs}$)의 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 $u(x,t)$를 구하시오.`;
         const fam = familyOf(cfg);
-        if (fam.radial) return `반지름 $R = ${Ls}$, 파동 속도 $c = ${cs}$인 원형 막의 가장자리가 고정되어 있다.${extra} 처음 변위가 중심으로부터의 거리 $r$에만 따르는 $f(r)$이고 처음 속도가 $g(r) = ${g}$일 때 $u(r,t)$를 구하시오.`;
+        if (fam.radial) return `반지름 $R = ${Ls}$, 파동 속도 $c = ${cs}$인 원형 막의 가장자리가 고정되어 있다.${extra} ${fam.m ? `처음 변위가 $f(r)\\cos ${fam.m}\\theta$이고 처음 속도가 $g(r)\\cos ${fam.m}\\theta$ ($g(r) = ${g}$)일 때 $u(r,\\theta,t)$를 구하시오.` : `처음 변위가 중심으로부터의 거리 $r$에만 따르는 $f(r)$이고 처음 속도가 $g(r) = ${g}$일 때 $u(r,t)$를 구하시오.`}`;
         const say = { fixed: ['고정되어 있고', '고정되어 있다'], free: ['자유롭게 움직이고($u_x = 0$)', '자유롭게 움직인다($u_x = 0$)'] }, [a, b] = fam.ends;
         const ends = a === b ? `의 양 끝이 ${say[a][1]}` : `의 $x = 0$ 끝은 ${say[a][0]} $x = L$ 끝은 ${say[b][1]}`;
         return `길이 $L = ${Ls}$, 파동 속도 $c = ${cs}$인 현${ends}.${extra} 초기 변위가 $f(x)$, 초기 속도가 $g(x) = ${g}$일 때 변위 $u(x,t)$를 구하시오.`;
@@ -75,9 +75,11 @@ $$u(x,t) = \frac{1}{2}[f(x+ct) + f(x-ct)] + \frac{1}{2c}\int_{x-ct}^{x+ct} g(s)\
         const fam = W.family, v = fam.radial ? 'r' : 'x', A = fam.n0 === 0 ? 'A' : 'B', out = [];
         out.push(`변수분리 $u = F(${v})G(t)$로 $${fam.ode ?? "F'' + k^2F = 0"}$, $G'' + c^2k^2G = 0$을 얻고, 모드마다 각진동수 $\\lambda_n = ck_n$으로 진동합니다($\\lambda_1 = ${coefText(W.omega(1))}$).`);
         out.push(...eigenSteps(cfg, R, { fam, what: '초기 변위 $f$', name: A, fnTex: `f(${v})`, tol }));
-        const Vn = firstNonzero(n => fineEigen(fam, W.g, R.L, n), 4, tol);
+        // 처음 속도가 0이면(격자에서 모두 0) 계수를 찾지 않습니다. 0인 계수를 차수 끝까지 정밀 적분하면 오래 걸립니다.
+        let gMax = 0; for (let i = 0; i <= 400; i++) gMax = Math.max(gMax, Math.abs(W.g(i / 400 * R.L)));
+        const Vn = gMax > 0 ? firstNonzero(n => fineEigen(fam, W.g, R.L, n), 4, tol) : [];
         if (Vn.length) out.push(`초기 속도도 같은 고유함수로 전개해 $\\lambda_n$으로 나누면 $${A}_n^*$입니다.`, valueEq(`${A}^*`, Vn.map(n => [n, fineEigen(fam, W.g, R.L, n) / W.omega(n)])));
-        out.push(`$$u(${v},t) = ${fam.n0 === 0 ? `${A}_0 + ` : ''}\\sum_{n=1}^{\\infty}(${A}_n\\cos\\lambda_n t + ${A}_n^*\\sin\\lambda_n t)${fam.tex}$$`);
+        out.push(`$$u(${fam.m ? 'r,\\theta' : v},t) = ${fam.n0 === 0 ? `${A}_0 + ` : ''}\\sum_{n=1}^{\\infty}(${A}_n\\cos\\lambda_n t + ${A}_n^*\\sin\\lambda_n t)${fam.tex}${fam.m ? `\\cos ${fam.m}\\theta` : ''}$$`);
         if (fam.n0 === 0) out.push(`양 끝이 자유로워 평균 높이 $${A}_0$은 그대로 남습니다.`);
         if (W.damping > 0) out.push(`감쇠가 있으면 각 모드의 시간 부분이 $q_n'' + 2kq_n' + \\lambda_n^2 q_n = 0$을 따릅니다. $k = ${fmt(W.damping, 4)}$${W.damping < W.omega(1) ? `이 $\\lambda_1$보다 작으므로 $q_n = e^{-kt}(B_n\\cos\\mu_n t + \\frac{kB_n}{\\mu_n}\\sin\\mu_n t)$, $\\mu_n = \\sqrt{\\lambda_n^2 - k^2}$입니다(처음 속도 0일 때).` : '이 $\\lambda_1$ 이상이어서 낮은 모드는 진동하지 않고 줄어듭니다(과감쇠).'}`);
         else out.push(fam.harmonic ? `모든 $\\lambda_n$이 $\\lambda_1$의 정수배이므로 주기 $2\\pi/\\lambda_1 = ${fmt(W.T, 4)}$마다 처음 모양으로 돌아옵니다.` : `$\\lambda_n$이 $\\lambda_1$의 정수배가 아니어서 처음 모양으로 정확히 돌아오지 않습니다.`);
