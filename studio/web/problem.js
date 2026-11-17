@@ -4,13 +4,13 @@
    이 파일은 방정식·영역의 이름, 주제 찾기, 문제를 고치는 규칙, 계산용 값 만들기(applyProblem), 예전 파일 읽기, 주제들이 함께 쓰는 단계 도우미입니다.
    표현(사인·코사인 급수, 적분)은 고르지 않고 영역과 양 끝 조건에서 정해집니다. */
 const EQUATIONS = [
-  { id: 'none', label: '없음 (함수 전개)', role: '함수 f(x)' },
+  { id: 'none', label: '함수 전개', role: '함수 f(x)' },
   { id: 'wave', label: '파동 방정식', tex: 'u_{tt} = c^2 u_{xx}', role: '초기 변위 f(x) = u(x, 0)' },
   { id: 'heat', label: '열 방정식', tex: 'u_t = c^2 u_{xx}', role: '초기 온도 f(x) = u(x, 0)' },
   { id: 'laplace', label: '라플라스 (정상 상태)', tex: 'u_{xx} + u_{yy} = 0', role: '위쪽 변의 온도 f(x)' },
 ];
 const DOMAINS = [
-  { id: 'periodic', label: '주기 (−L, L)', where: '한 주기 −L < x < L', lLabel: '반주기 L (주기 2L)', why: '주기 영역은 함수 전개(방정식 없음)에만 씁니다.' },
+  { id: 'periodic', label: '주기 (−L, L)', where: '한 주기 −L < x < L', lLabel: '반주기 L (주기 2L)', why: '주기 영역은 함수 전개에만 씁니다.' },
   { id: 'interval', label: '구간 (0, L)', where: '0 < x < L', lLabel: '길이 L', sides: [['left', 'x = 0 끝'], ['right', 'x = L 끝']] },
   { id: 'line', label: '직선 (−∞, ∞)', where: '−∞ < x < ∞' },
   { id: 'rect', label: '직사각형', where: '0 < x < a (a = L)', lLabel: '가로 길이 a = L', why: '직사각형 영역은 파동(막의 진동)과 라플라스 방정식(정상 상태 온도)에 있습니다.',
