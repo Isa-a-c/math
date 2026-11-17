@@ -23,7 +23,7 @@ const EXACT_NOTE = '= 로 적은 값은 수치 적분 결과와 맞는 정확한
 function eigenSteps(cfg, R, { fam, fn = R.f, what = '$f(x)$', name = 'c', fnTex = 'f(x)', tol, sym }) {
   const L = R.L, out = [], tx = fam.tex;
   out.push(`${what}를 고유함수 $\\varphi_n = ${tx}$로 전개합니다. ${fam.kMd ? fam.kMd(L) : `$k_n = ${fam.kTex}$입니다.`}`);
-  out.push(fam.coefTex ? `$$${fam.coefTex(name, fnTex)}$$` : `$$${name}_n = \\frac{2}{L}\\int_0^L ${fnTex}${tx}\\,dx${fam.n0 === 0 ? `,\\quad ${name}_0 = \\frac{1}{L}\\int_0^L ${fnTex}\\,dx` : ''}$$`);
+  out.push(`$$${coefTexOf(fam, name, fnTex)}$$`);   // 노름이 L/2가 아닌 종류(열 방출)는 ∫fφ/∫φ² 꼴
   if ((fam.id === 'sine' || fam.id === 'cosine') && (fn === R.f || sym)) { const s = symbolicFor({ ...cfg, on: { ...cfg.on, half: true } }, R, fam.id, ...(sym ?? [])); if (s) out.push(symbolicSteps(s, fam.id, { a0: `${name}_0`, a: `${name}_n`, b: `${name}_n` })); }
   if (fam.n0 === 0) { const e0 = exact(fineEigen(fam, fn, L, 0)); out.push(`$$${name}_0 ${rel(e0)} ${e0.text}$$`); }
   const ns = firstNonzero(n => fineEigen(fam, fn, L, n), 4, tol);

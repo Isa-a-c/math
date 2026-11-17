@@ -40,7 +40,9 @@ function blocksHtml(blocks, print = false) {
 }
 
 /* ── 글 표기: 문단은 빈 줄로 나누고, $…$는 수식, $$…$$만 있는 문단은 가운데 수식, '> '로 시작하면 강조 상자, **…**는 굵게 ── */
-const TEX_SYMBOL = { pi: 'π', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ', theta: 'θ', omega: 'ω', sigma: 'σ', phi: 'φ', mu: 'μ', rho: 'ρ', tau: 'τ', Delta: 'Δ',
+/** 수식 표시기가 모르는 명령(예: \varphi를 넣기 전)을 모읍니다. 자체 검사가 비어 있는지 봅니다. */
+const TEX_UNKNOWN = new Set();
+const TEX_SYMBOL = { pi: 'π', alpha: 'α', beta: 'β', gamma: 'γ', lambda: 'λ', theta: 'θ', omega: 'ω', sigma: 'σ', phi: 'φ', varphi: 'φ', mu: 'μ', rho: 'ρ', tau: 'τ', Delta: 'Δ',
   infty: '∞', le: '≤', leq: '≤', ge: '≥', geq: '≥', ne: '≠', neq: '≠', approx: '≈', cdot: '·', times: '×', to: '→', pm: '±', partial: '∂', nabla: '∇', ldots: '…', cdots: '⋯', dots: '…' };
 const TEX_SPACE = { ',': ' ', ';': ' ', ' ': ' ', quad: ' ', qquad: '  ' };
 const TEX_FUNCTIONS = ['sin', 'cos', 'tan', 'exp', 'ln', 'log', 'sinh', 'cosh', 'tanh', 'sign', 'abs', 'step', 'sqrt', 'max', 'min', 'lim', 'arctan'];
@@ -95,6 +97,7 @@ function tex(src) {
       if (TEX_FUNCTIONS.includes(name)) return fnWord(name);
       if (name === 'left' || name === 'right') return U('');
       if (name in TEX_SYMBOL) { const sym = TEX_SYMBOL[name]; return /[α-ω]/.test(sym) ? T(sym) : U(sym); }
+      if (/^[A-Za-z]+$/.test(name)) TEX_UNKNOWN.add(name);   // 모르는 명령은 이름을 글자로 씁니다(자체 검사가 찾음).
       return U(name);
     }
     if (/^[A-Za-z]+$/.test(t)) return TEX_FUNCTIONS.includes(t) ? fnWord(t) : T(t);

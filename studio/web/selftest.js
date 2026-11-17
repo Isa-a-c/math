@@ -110,7 +110,12 @@ window.STUDIO_SELFTEST = () => {
         const R = S.R, sum = summary(cfg, R), items = autoItems(cfg);
         if (!sum.length || junk(JSON.stringify(sum))) fail(cfg, '요약');
         if (!items.length) fail(cfg, '자동 소문항 없음');
-        for (const it of items) { const q = problemText(it.kind, cfg, R), a = solutionText(it.kind, cfg, R); if (!q || !a || junk(q + a) || /꺼져 있습니다/.test(q + a)) fail(cfg, `소문항 ${it.kind}`); }
+        for (const it of items) {
+          const q = problemText(it.kind, cfg, R), a = solutionText(it.kind, cfg, R), div = document.createElement('div');
+          if (!q || !a || junk(q + a) || /꺼져 있습니다/.test(q + a)) fail(cfg, `소문항 ${it.kind}`);
+          TEX_UNKNOWN.clear(); div.innerHTML = blocksHtml(markupBlocks(`${q}\n\n${a}\n\n${stagesOf(cfg).map(st => st.md).join('\n\n')}`));   // 수식 표시기가 모르는 명령(\varphi 등)이 글자로 남으면 실패
+          if (TEX_UNKNOWN.size) fail(cfg, `소문항 ${it.kind}: 표시되지 않는 수식 명령 ${[...TEX_UNKNOWN].join(', ')}`);
+        }
         if (!CONCEPT_MARKUP[deepestOf(cfg)]) fail(cfg, '개념 설명');
         const back = mergeCfg(JSON.parse(JSON.stringify(storedCfg(cfg))));
         if (JSON.stringify(back.prob) !== JSON.stringify(cfg.prob) || JSON.stringify(back.on) !== JSON.stringify(cfg.on) || recipeText(back) !== recipeText(cfg)) fail(cfg, '저장하고 다시 읽으면 달라짐');
@@ -132,6 +137,8 @@ window.STUDIO_SELFTEST = () => {
     // 양 끝 열 방출: 정상 상태 0, kₙ은 tan kL = 2hk/(k² − h²)의 근. x = 0 끝만 열 방출이면 (fixed, robin)을 뒤집은 것
     prob('left', 'robin'); prob('right', 'robin'); const kr = S.R.heat.family.k(1, 1);
     check(near(Math.tan(kr), 2 * kr / (kr * kr - 1), 1e-9) && near(S.R.heat.limit(.3), 0, 1e-12) && shown() === 'heat' && problemText('heat', S.good, S.R).includes('u_x - hu') && S.cfg.on.modes && !S.cfg.on.half, '양 끝 열 방출: tan kL = 2hk/(k² − h²), 정상 상태 0');
+    { const sol = solutionText('modes', S.good, S.R), div = document.createElement('div'); TEX_UNKNOWN.clear(); div.innerHTML = blocksHtml(markupBlocks(sol));
+      check(sol.includes('\\frac{\\int_0^L') && !sol.includes('\\frac{2}{L}') && !TEX_UNKNOWN.size && div.textContent.includes('φ'), '열 방출 고유함수의 계수 식은 ∫fφ/∫φ² (노름이 L/2가 아님), 풀이에 TeX 명령이 글자로 남지 않음'); }
     prob('right', 'fixed'); set({ f: '1', right: '1' }); check(near(S.R.heat.family.k(1, 1), k1, 1e-12) && near(S.R.heat.limit(0), .5, 1e-9) && near(S.R.heat.limit(1), 1, 1e-9), 'x = 0 끝 열 방출, x = L 끝 1도: 정상 상태 U = (1 + hx)/(1 + hL)'); }
   // 원판: Fourier–Bessel 급수, 원형 막, 원판의 열전도. 입력은 r로 써도 됩니다.
   { const a1 = besselZero(0, 1);
